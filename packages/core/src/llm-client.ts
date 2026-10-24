@@ -7,10 +7,18 @@ export interface OpenAiCompatibleOptions {
   text: string;
   timeoutMs?: number;
   jsonMode?: boolean;
+  reasoningEffort?: string;
+}
+
+export interface OpenAiCompatibleUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  costUsd: number | null;
 }
 
 export interface OpenAiCompatibleResult {
   raw: string;
+  usage: OpenAiCompatibleUsage;
 }
 
 export class LlmProviderError extends Error {
@@ -52,6 +60,9 @@ export async function callOpenAiCompatible(
   };
   if (options.jsonMode !== false) {
     body.response_format = { type: "json_object" };
+  }
+  if (options.reasoningEffort) {
+    body.reasoning_effort = options.reasoningEffort;
   }
 
   let response: Response;
@@ -101,5 +112,17 @@ export async function callOpenAiCompatible(
   if (!raw) {
     throw new LlmProviderError("LLM returned no text");
   }
-  return { raw };
+  const usage = (payload as { usage?: Record<string, unknown> }).usage ?? {};
+  const asNumber = (value: unknown): number | null => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return {
+    raw,
+    usage: {
+      promptTokens: asNumber(usage.prompt_tokens),
+      completionTokens: asNumber(usage.completion_tokens),
+      costUsd: asNumber(usage.cost ?? usage.total_cost),
+    },
+  };
 }

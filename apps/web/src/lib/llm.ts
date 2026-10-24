@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { LlmResponse } from "@chiron/contracts";
 import { llmResponseSchema } from "@chiron/contracts";
+import type { OpenAiCompatibleUsage } from "@chiron/core";
 import {
   LLM_PROMPT_VERSION,
   LLM_RULES_VERSION,
@@ -18,6 +19,7 @@ import {
   llmJsonMode,
   llmModel,
   llmProvider,
+  llmReasoningEffort,
 } from "./config";
 
 interface ParseResult {
@@ -29,9 +31,22 @@ interface ParseResult {
   costUsd: number;
 }
 
-function estimateCost(text: string, output: string): number {
-  const inputTokens = Math.ceil((LLM_SYSTEM_PROMPT.length + text.length) / 4);
-  const outputTokens = Math.ceil(output.length / 4);
+function estimateCost(
+  text: string,
+  output: string,
+  usage?: OpenAiCompatibleUsage,
+): number {
+  if (
+    usage?.costUsd !== null &&
+    usage?.costUsd !== undefined &&
+    Number.isFinite(usage.costUsd)
+  ) {
+    return Math.round(usage.costUsd * 1_000_000) / 1_000_000;
+  }
+  const inputTokens =
+    usage?.promptTokens ?? Math.ceil((LLM_SYSTEM_PROMPT.length + text.length) / 4);
+  const outputTokens =
+    usage?.completionTokens ?? Math.ceil(output.length / 4);
   const inputRate = Number(process.env.LLM_INPUT_USD_PER_1M ?? "0.1");
   const outputRate = Number(process.env.LLM_OUTPUT_USD_PER_1M ?? "0.4");
   const cost =
@@ -373,21 +388,25 @@ export async function parseTextForUser(
   const providerLabel = provider === "openai" ? "routerai" : "google";
   const started = Date.now();
   try {
-    const raw =
-      provider === "openai"
-        ? (
-            await callOpenAiCompatible({
-              baseUrl: llmBaseUrl(),
-              apiKey,
-              model,
-              text,
-              timeoutMs: 15_000,
-              jsonMode: llmJsonMode(),
-            })
-          ).raw
-        : await callGemini(apiKey, model, text);
+    let raw: string;
+    let costUsd: number;
+    if (provider === "openai") {
+      const result = await callOpenAiCompatible({
+        baseUrl: llmBaseUrl(),
+        apiKey,
+        model,
+        text,
+        timeoutMs: 15_000,
+        jsonMode: llmJsonMode(),
+        reasoningEffort: llmReasoningEffort(),
+      });
+      raw = result.raw;
+      costUsd = estimateCost(text, raw, result.usage);
+    } else {
+      raw = await callGemini(apiKey, model, text);
+      costUsd = estimateCost(text, raw);
+    }
     const latencyMs = Date.now() - started;
-    const costUsd = estimateCost(text, raw);
     return finalizeProviderResult({
       userId,
       text,

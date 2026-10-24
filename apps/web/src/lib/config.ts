@@ -110,6 +110,11 @@ export function llmJsonMode(): boolean {
   return process.env.LLM_JSON_MODE !== "0";
 }
 
+export function llmReasoningEffort(): string | undefined {
+  const value = process.env.LLM_REASONING_EFFORT?.trim();
+  return value ? value : undefined;
+}
+
 export interface RuntimeConfigReport {
   production: boolean;
   warnings: string[];

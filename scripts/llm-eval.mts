@@ -12,6 +12,7 @@ const {
 const { llmResponseSchema } = await import("@chiron/contracts");
 type LlmResponse = import("@chiron/contracts").LlmResponse;
 type GoldenParserCase = import("@chiron/core").GoldenParserCase;
+type OpenAiUsage = import("@chiron/core").OpenAiCompatibleUsage;
 
 interface Prediction {
   response: LlmResponse | null;
@@ -86,6 +87,7 @@ async function livePredictor(text: string): Promise<Prediction> {
 
   try {
     let raw: string;
+    let usage: OpenAiUsage | null = null;
     if (provider === "openai") {
       const apiKey = process.env.LLM_API_KEY;
       const baseUrl = process.env.LLM_BASE_URL;
@@ -99,16 +101,17 @@ async function livePredictor(text: string): Promise<Prediction> {
           costUsd: 0,
         };
       }
-      raw = (
-        await callOpenAiCompatible({
-          baseUrl,
-          apiKey,
-          model,
-          text,
-          timeoutMs: 20_000,
-          jsonMode: process.env.LLM_JSON_MODE !== "0",
-        })
-      ).raw;
+      const result = await callOpenAiCompatible({
+        baseUrl,
+        apiKey,
+        model,
+        text,
+        timeoutMs: 20_000,
+        jsonMode: process.env.LLM_JSON_MODE !== "0",
+        reasoningEffort: process.env.LLM_REASONING_EFFORT?.trim() || undefined,
+      });
+      raw = result.raw;
+      usage = result.usage;
     } else if (provider === "gemini") {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -165,13 +168,15 @@ async function livePredictor(text: string): Promise<Prediction> {
       };
     }
 
-    const inputTokens = Math.ceil(
-      (LLM_SYSTEM_PROMPT.length + text.length) / 4,
-    );
-    const outputTokens = Math.ceil(raw.length / 4);
+    const inputTokens =
+      usage?.promptTokens ??
+      Math.ceil((LLM_SYSTEM_PROMPT.length + text.length) / 4);
+    const outputTokens =
+      usage?.completionTokens ?? Math.ceil(raw.length / 4);
     const inputRate = Number(process.env.LLM_INPUT_USD_PER_1M ?? "0.1");
     const outputRate = Number(process.env.LLM_OUTPUT_USD_PER_1M ?? "0.4");
     const costUsd =
+      usage?.costUsd ??
       Math.round(
         (((inputTokens * inputRate + outputTokens * outputRate) /
           1_000_000) *

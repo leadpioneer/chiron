@@ -22,7 +22,10 @@ Gemini-код остаётся в репозитории как альтерна
 - Модель: `~deepseek/deepseek-v4-flash-latest` (алиас передаётся как есть).
 - Запрос: `temperature=0`, `max_tokens=800`, JSON mode
   (`response_format={"type":"json_object"}`) с возможностью отключить через
-  `LLM_JSON_MODE=0`.
+  `LLM_JSON_MODE=0`; `reasoning_effort=none` через `LLM_REASONING_EFFORT`,
+  чтобы модель не тратила output-токены на reasoning.
+- Стоимость берётся из `usage.cost` ответа провайдера, если поле есть; иначе
+  оценивается по `LLM_INPUT_USD_PER_1M` / `LLM_OUTPUT_USD_PER_1M`.
 - Точный provider label в `llm_calls` — `routerai`; модель сохраняется
   строкой алиаса. Промпт, схема и правила остаются версиями `parse-v1`,
   `1.0`, `1.0.0`.

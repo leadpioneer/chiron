@@ -14,6 +14,11 @@ describe("callOpenAiCompatible", () => {
       new Response(
         JSON.stringify({
           choices: [{ message: { content: '{"schemaVersion":"1.0"}' } }],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 20,
+            cost: 0.00042,
+          },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -28,6 +33,11 @@ describe("callOpenAiCompatible", () => {
     });
 
     expect(result.raw).toBe('{"schemaVersion":"1.0"}');
+    expect(result.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 20,
+      costUsd: 0.00042,
+    });
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://routerai.ru/api/v1/chat/completions");
@@ -48,6 +58,28 @@ describe("callOpenAiCompatible", () => {
       content: "жим 70 на 8",
     });
     expect(body.response_format).toEqual({ type: "json_object" });
+  });
+
+  it("passes reasoning_effort when configured", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), {
+        status: 200,
+      }),
+    );
+    globalThis.fetch = fetchMock;
+
+    await callOpenAiCompatible({
+      baseUrl: "https://routerai.ru/api/v1",
+      apiKey: "test-key",
+      model: "test-model",
+      text: "test",
+      reasoningEffort: "none",
+    });
+
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body),
+    ) as Record<string, unknown>;
+    expect(body.reasoning_effort).toBe("none");
   });
 
   it("can disable JSON mode for providers without response_format", async () => {
