@@ -1,0 +1,29 @@
+{
+  "name": "@chiron/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "tsx src/migrate.ts",
+    "push": "drizzle-kit push",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chiron/core": "0.1.0",
+    "dotenv": "17.2.3",
+    "drizzle-orm": "0.45.4",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

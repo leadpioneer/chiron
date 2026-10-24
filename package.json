@@ -1,0 +1,30 @@
+{
+  "name": "chiron",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @chiron/web",
+    "build": "npm run build --workspace @chiron/web",
+    "start": "npm run start --workspace @chiron/web",
+    "test": "npm run test --workspace @chiron/core",
+    "test:watch": "npm run test:watch --workspace @chiron/core",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:dev": "node scripts/dev-db.mjs",
+    "db:generate": "npm run generate --workspace @chiron/db",
+    "db:migrate": "npm run migrate --workspace @chiron/db",
+    "db:push": "npm run push --workspace @chiron/db",
+    "db:seed": "npm run seed --workspace @chiron/db"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "dotenv": "17.2.3",
+    "embedded-postgres": "18.4.0-beta.17",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}

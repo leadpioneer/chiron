@@ -1,0 +1,147 @@
+import { redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
+import { athleteProfiles, getDb } from "@chiron/db";
+import { getCurrentUser } from "@/src/lib/auth";
+import { getActiveCycle } from "@/src/lib/plan-service";
+import { formatDate } from "@/src/lib/dates";
+import { SettingsActions } from "@/src/components/SettingsActions";
+
+export const metadata = { title: "Настройки" };
+
+const EXPERIENCE_LABELS: Record<string, string> = {
+  BEGINNER: "Начинаю",
+  RETURNING: "Возвращаюсь",
+  INTERMEDIATE: "Уже тренируюсь",
+};
+
+const GOAL_LABELS: Record<string, string> = {
+  STRENGTH: "Сила",
+  AESTHETIC: "Эстетика",
+  BOTH: "Сила и эстетика",
+};
+
+export default async function SettingsPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const cycle = await getActiveCycle(user.id);
+  const profileRows = await getDb()
+    .select()
+    .from(athleteProfiles)
+    .where(eq(athleteProfiles.userId, user.id))
+    .limit(1);
+  const profile = profileRows[0];
+
+  return (
+    <div>
+      <p className="eyebrow">Аккаунт</p>
+      <h1 className="page-title">Настройки</h1>
+      <p className="subtitle">
+        Данные принадлежат вам. Экспорт и удаление доступны без переписки с
+        поддержкой.
+      </p>
+
+      <section className="card">
+        <div className="card-head">
+          <div>
+            <h2 className="card-title">{user.displayName}</h2>
+            <p className="small muted" style={{ margin: "4px 0 0" }}>
+              {user.email ?? "Вход через Telegram"} · язык {user.locale}
+            </p>
+          </div>
+          <span className="badge">V1 alpha</span>
+        </div>
+
+        <div className="grid grid-3">
+          <div className="stat">
+            <div className="stat-value">
+              {profile?.experience
+                ? EXPERIENCE_LABELS[profile.experience] ?? profile.experience
+                : "—"}
+            </div>
+            <div className="stat-label">Опыт</div>
+          </div>
+          <div className="stat">
+            <div className="stat-value">
+              {profile?.goal ? GOAL_LABELS[profile.goal] ?? profile.goal : "—"}
+            </div>
+            <div className="stat-label">Цель</div>
+          </div>
+          <div className="stat">
+            <div className="stat-value">
+              {profile?.bodyweightKg
+                ? `${profile.bodyweightKg} кг`
+                : "не задан"}
+            </div>
+            <div className="stat-label">Вес тела</div>
+          </div>
+          <div className="stat">
+            <div className="stat-value">
+              {profile?.heightCm ? `${profile.heightCm} см` : "не задан"}
+            </div>
+            <div className="stat-label">Рост</div>
+          </div>
+          <div className="stat">
+            <div className="stat-value">
+              {profile?.bodyFatPercent
+                ? `≈ ${profile.bodyFatPercent}%`
+                : "не задан"}
+            </div>
+            <div className="stat-label">Процент жира</div>
+          </div>
+          <div className="stat">
+            <div className="stat-value">
+              {profile?.trainingScheme === "FIVE_DAY_CYCLE"
+                ? "5-дневный"
+                : "Через день"}
+            </div>
+            <div className="stat-label">Схема</div>
+          </div>
+          <div className="stat">
+            <div className="stat-value">
+              {cycle ? "активен" : "нет"}
+            </div>
+            <div className="stat-label">Цикл</div>
+          </div>
+        </div>
+
+        {cycle ? (
+          <p className="small muted" style={{ marginTop: 14 }}>
+            Цикл: {formatDate(cycle.startDate)} — {formatDate(cycle.endDate)}.
+            Изменения плана — только через подтверждение.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="card">
+        <div className="card-head">
+          <div>
+            <h2 className="card-title">Данные</h2>
+            <p className="small muted" style={{ margin: "4px 0 0" }}>
+              Экспорт содержит тренировки, версии плана, решения и audit.
+            </p>
+          </div>
+        </div>
+        <SettingsActions />
+      </section>
+
+      <section className="card">
+        <div className="card-head">
+          <div>
+            <h2 className="card-title">Границы продукта</h2>
+          </div>
+        </div>
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Chiron — wellness-инструмент планирования. Он не диагностирует, не
+          лечит, не оценивает безопасность боли и не заменяет врача или тренера.
+          При красных флагах тренировка останавливается и рекомендуется
+          неотложная помощь.
+        </p>
+        <p className="tiny muted" style={{ marginBottom: 0 }}>
+          Сырой текст для LLM хранится 90 дней. Audit — 365 дней. Логи — 30
+          дней. Удаление аккаунта запускает анонимизацию и удаление данных в
+          течение 30 дней; входы отключаются сразу.
+        </p>
+      </section>
+    </div>
+  );
+}

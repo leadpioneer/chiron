@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chiron}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chiron}
+      POSTGRES_DB: ${POSTGRES_DB:-chiron}
+    volumes:
+      - chiron_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chiron} -d ${POSTGRES_DB:-chiron}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  bootstrap:
+    build:
+      context: .
+      target: build
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-chiron}:${POSTGRES_PASSWORD:-chiron}@db:5432/${POSTGRES_DB:-chiron}
+    command: sh -c "npm run db:migrate && npm run db:seed"
+
+  web:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-chiron}:${POSTGRES_PASSWORD:-chiron}@db:5432/${POSTGRES_DB:-chiron}
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    command: sh -c "node apps/web/server.js"
+
+volumes:
+  chiron_pgdata:
