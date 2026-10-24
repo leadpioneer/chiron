@@ -29,6 +29,16 @@ export async function POST(request: Request): Promise<Response> {
   const ipLimit = authIpLimiter.check(`magic-link:${clientIp(request)}`);
   if (!ipLimit.ok) return rateLimitResponse(ipLimit);
 
+  const devMode = authDevModeEnabled();
+  const provider = emailProvider();
+  if (!devMode && (provider === "none" || provider === "console")) {
+    return apiError(
+      "EMAIL_NOT_CONFIGURED",
+      "Отправка почты не настроена. Обратитесь к администратору.",
+      503,
+    );
+  }
+
   const email = parsed.data.email;
   const emailLimit = await magicLinkEmailLimit(email);
   if (!emailLimit.ok) return rateLimitResponse(emailLimit);
@@ -43,16 +53,6 @@ export async function POST(request: Request): Promise<Response> {
       "EMAIL_NOT_ALLOWED",
       "Доступ по приглашению. Обратитесь к администратору.",
       403,
-    );
-  }
-
-  const devMode = authDevModeEnabled();
-  const provider = emailProvider();
-  if (!devMode && (provider === "none" || provider === "console")) {
-    return apiError(
-      "EMAIL_NOT_CONFIGURED",
-      "Отправка почты не настроена. Обратитесь к администратору.",
-      503,
     );
   }
 
