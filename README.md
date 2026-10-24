@@ -1,5 +1,7 @@
 ﻿# Chiron
 
+[![CI](https://github.com/leadpioneer/chiron/actions/workflows/ci.yml/badge.svg)](https://github.com/leadpioneer/chiron/actions/workflows/ci.yml)
+
 Адаптивный дневник силовых тренировок для начинающих и возвращающихся любителей.
 Wellness-инструмент: не диагностирует, не лечит и не заменяет врача или тренера.
 

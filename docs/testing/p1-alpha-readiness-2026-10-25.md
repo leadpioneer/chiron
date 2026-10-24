@@ -28,6 +28,7 @@ Chiron зафиксирован как некоммерческий проект
 | `npm run test:e2e` | 33/33, Chromium |
 | Production-mode smoke | health 200, CSRF 403, invalid config exit 1 |
 | Compose staging | `docker compose config` pass |
+| GitHub Actions CI | success, [run 40138587684](https://github.com/leadpioneer/chiron/actions/runs/40138587684) |
 
 ## LLM-eval
 
@@ -163,7 +164,7 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
 
 - Docker daemon не запущен: staging-контейнеры, Caddy TLS и restore-drill не
   прогнаны на живой БД. Compose-конфиг валиден.
-- Нет remote Git/GitHub: CI workflow добавлен, но GitHub Actions не запускался.
+- Живой staging с доменом, TLS и restore-drill не развёрнут.
 - Нет live LLM-ключа: живой eval и калибровка модели не выполнены.
 - Нет Telegram bot token/username и реальных устройств.
 - Связка Telegram с Web-аккаунтом, юридические документы, РКН/DPIA,

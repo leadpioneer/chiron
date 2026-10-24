@@ -1,8 +1,9 @@
 # P1 — Alpha readiness: задание агенту
 
-- **Статус:** P1-A реализован в коде 25.10.2026, см.
-  [`p1-alpha-readiness`](../testing/p1-alpha-readiness-2026-10-25.md); живой
-  staging, CI и P1-B ждут внешних доступов
+- **Статус:** P1-A реализован 25.10.2026, CI на GitHub зелёный
+  ([run 40138587684](https://github.com/leadpioneer/chiron/actions/runs/40138587684));
+  живой staging и P1-B ждут внешних доступов. Отчёт:
+  [`p1-alpha-readiness`](../testing/p1-alpha-readiness-2026-10-25.md).
 - **Владелец продукта:** автор проекта
 - **Обязательное чтение:** `AGENTS.md`, `docs/decisions/v1-decisions.md`,
   `docs/decisions/ADR-001-implementation-slice.md`,

@@ -6,8 +6,10 @@
 [`cycle-002`](../testing/cycle-002-2026-10-24.md). P1-A (инженерная готовность
 к alpha) реализован по [`P1-agent-brief`](P1-agent-brief.md) и
 [`ADR-003`](../decisions/ADR-003-alpha-security-and-operations.md); результаты —
-[`p1-alpha-readiness`](../testing/p1-alpha-readiness-2026-10-25.md). Следующий
-шаг — P1-B: живые ключи, домен, устройства и юридические документы.
+[`p1-alpha-readiness`](../testing/p1-alpha-readiness-2026-10-25.md). Репозиторий:
+[`leadpioneer/chiron`](https://github.com/leadpioneer/chiron), CI зелёный
+([run 40138587684](https://github.com/leadpioneer/chiron/actions/runs/40138587684)).
+Следующий шаг — P1-B: живые ключи, домен, устройства и юридические документы.
 
 ## Сессия 1 — P0: перенос, возврат, пересмотр, полный цикл
 
@@ -48,7 +50,6 @@ ADR обновлены.
 
 **Осталось в P1-B:**
 
-- remote Git и зелёный CI на GitHub;
 - реальный домен, TLS, VPS, живой staging и проверка восстановления бэкапа;
 - живой LLM-eval на закреплённой модели и ключ провайдера;
 - Telegram-бот, iOS/Android, связка Telegram с Web-аккаунтом;
