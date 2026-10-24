@@ -21,7 +21,7 @@ Chiron зафиксирован как некоммерческий проект
 | Проверка | Результат |
 |---|---|
 | `npm run typecheck` | pass: web, core, db |
-| `npm test` | 136/136, 11 файлов |
+| `npm test` | 140/140, 12 файлов |
 | `npm run test:llm-eval` | 50/50 кейсов, gate pass |
 | `npm run build` | pass, 27 маршрутов, Proxy (Middleware) |
 | `npm run test:cycle` | pass: 28 и 23 сессии |

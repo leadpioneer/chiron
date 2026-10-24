@@ -14,6 +14,13 @@ export const metadata: Metadata = {
   description:
     "Адаптивный дневник силовых тренировок: план, факт, прогрессия и объяснимые решения.",
   applicationName: "Chiron",
+  robots: {
+    index: false,
+    follow: false,
+    noarchive: true,
+    nosnippet: true,
+    noimageindex: true,
+  },
   manifest: "/manifest.webmanifest",
   icons: { icon: "/icon.svg" },
   appleWebApp: {

@@ -26,10 +26,12 @@ export function LoginForm({
   devMode,
   initialError,
   telegramBotUsername,
+  emailEnabled,
 }: {
   devMode: boolean;
   initialError?: string;
   telegramBotUsername: string | null;
+  emailEnabled: boolean;
 }) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(
@@ -127,23 +129,29 @@ export function LoginForm({
         <TelegramLoginWidget botUsername={telegramBotUsername} />
       )}
 
-      <form className="stack" onSubmit={requestLink}>
-        <label className="field">
-          <span className="label">Email</span>
-          <input
-            className="input"
-            type="email"
-            autoComplete="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-        </label>
-        <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
-          {loading ? "Создаю ссылку…" : "Получить ссылку для входа"}
-        </button>
-      </form>
+      {emailEnabled ? (
+        <form className="stack" onSubmit={requestLink}>
+          <label className="field">
+            <span className="label">Email</span>
+            <input
+              className="input"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+          <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
+            {loading ? "Создаю ссылку…" : "Получить ссылку для входа"}
+          </button>
+        </form>
+      ) : (
+        <p className="small muted">
+          Вход по email отключён. Используйте Telegram.
+        </p>
+      )}
 
       {devMode ? (
         <button

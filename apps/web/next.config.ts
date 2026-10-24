@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
         key: "permissions-policy",
         value: "camera=(), microphone=(), geolocation=()",
       },
+      {
+        key: "x-robots-tag",
+        value: "noindex, nofollow, noarchive, nosnippet, noimageindex",
+      },
     ];
     if (process.env.NODE_ENV === "production") {
       securityHeaders.push({

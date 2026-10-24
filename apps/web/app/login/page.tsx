@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/src/lib/auth";
-import { authDevModeEnabled } from "@/src/lib/config";
+import { authDevModeEnabled, emailProvider } from "@/src/lib/config";
 import { LoginForm } from "@/src/components/LoginForm";
 
 export const metadata = { title: "Вход" };
@@ -34,6 +34,7 @@ export default async function LoginPage({
           telegramBotUsername={
             process.env.TELEGRAM_BOT_USERNAME?.trim() || null
           }
+          emailEnabled={emailProvider() !== "none"}
         />
         <div className="divider" />
         <p className="tiny muted" style={{ margin: 0 }}>

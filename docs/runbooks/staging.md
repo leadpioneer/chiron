@@ -21,7 +21,7 @@
 cp .env.staging.example .env.staging
 chmod 600 .env.staging
 # заполнить POSTGRES_PASSWORD, AUTH_SECRET, APP_URL, DOMAIN, ACME_EMAIL,
-# EMAIL_*, TELEGRAM_*, GEMINI_API_KEY, LLM_*
+# EMAIL_*, TELEGRAM_*, LLM_* (провайдер, base URL, ключ, модель)
 docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
 docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 ```
@@ -54,7 +54,7 @@ Bootstrap-контейнер применяет миграции и seed. Есл
   `LLM_GLOBAL_MONTHLY_BUDGET_USD`.
 - При 80% бюджета в лог пишется `llm_budget_alert`; при 100% — fallback.
 - Golden dataset: `npm run test:llm-eval` (50 кейсов). Живой прогон:
-  `LLM_EVAL_LIVE=1 GEMINI_API_KEY=… npm run test:llm-eval`.
+  `LLM_EVAL_LIVE=1 LLM_PROVIDER=openai LLM_BASE_URL=… LLM_API_KEY=… LLM_MODEL=… npm run test:llm-eval`.
 - Модель меняется только решением владельца; версия сохраняется в `llm_calls`.
 
 ## 5. Бэкап
@@ -123,14 +123,34 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging logs --tail
 ## 8. Допуск тестеров
 
 1. Добавить Telegram username/id в `TELEGRAM_ALLOWLIST`.
-2. Добавить email-тестеров в `ALPHA_EMAIL_ALLOWLIST` (точный адрес или
-   `*@domain`) и перезапустить web. Пустой список в production не проходит
-   startup validation.
+2. Для email-тестеров добавить адреса в `ALPHA_EMAIL_ALLOWLIST` (точный адрес
+   или `*@domain`) и перезапустить web. Пустой список допустим, если задан
+   `TELEGRAM_ALLOWLIST`: новые email-регистрации блокируются. Хотя бы один
+   allowlist в production обязателен.
 3. Для email-тестеров создать magic link вручную только если провайдер
    недоступен; ссылка действует 15 минут.
 4. Проверить вход на iOS Safari и Android Chrome.
 5. Записать тестера, устройство, дату и результат.
 6. Публичную регистрацию не открывать.
+
+### 8.1. Запрет индексации
+
+Текущий staging: `https://fit.leadpioneer.ru`.
+
+- `/robots.txt` отдаёт `Disallow: /`;
+- все ответы содержат `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet,
+  noimageindex`;
+- страницы отдают `<meta name="robots" content="noindex, nofollow">`.
+
+Проверка:
+
+```bash
+curl -fsS https://fit.leadpioneer.ru/robots.txt
+curl -fsSI https://fit.leadpioneer.ru/login | grep -i x-robots-tag
+```
+
+Не добавлять домен в поисковые панели и не публиковать ссылки в индексируемых
+местах.
 
 ## 9. Обновление
 

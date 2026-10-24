@@ -59,19 +59,55 @@ export function alphaEmailAllowlist(): string[] {
 
 export function emailAllowedForSignup(email: string): boolean {
   const allowlist = alphaEmailAllowlist();
-  if (allowlist.length === 0) return true;
+  if (allowlist.length === 0) return !isProduction();
   const normalized = email.trim().toLowerCase();
   if (allowlist.includes(normalized)) return true;
   const domain = normalized.split("@")[1];
   return domain ? allowlist.includes(`*@${domain}`) : false;
 }
 
+export type LlmProvider = "gemini" | "openai" | "none";
+
 export function llmEnabled(): boolean {
   return process.env.LLM_ENABLED !== "0";
 }
 
+export function llmProvider(): LlmProvider {
+  const explicit = (process.env.LLM_PROVIDER ?? "").trim().toLowerCase();
+  if (
+    explicit === "openai" ||
+    explicit === "openai-compatible" ||
+    explicit === "routerai"
+  ) {
+    return "openai";
+  }
+  if (explicit === "gemini") return "gemini";
+  if (explicit === "none" || explicit === "disabled") return "none";
+  if (process.env.LLM_API_KEY && process.env.LLM_BASE_URL) return "openai";
+  if (process.env.GEMINI_API_KEY) return "gemini";
+  return "none";
+}
+
 export function llmModel(): string {
-  return process.env.LLM_MODEL ?? "gemini-2.5-flash";
+  const configured = process.env.LLM_MODEL?.trim();
+  if (configured) return configured;
+  return llmProvider() === "gemini" ? "gemini-2.5-flash" : "";
+}
+
+export function llmBaseUrl(): string {
+  return (
+    process.env.LLM_BASE_URL?.trim() || "https://routerai.ru/api/v1"
+  );
+}
+
+export function llmApiKey(): string | undefined {
+  return llmProvider() === "gemini"
+    ? process.env.GEMINI_API_KEY
+    : process.env.LLM_API_KEY;
+}
+
+export function llmJsonMode(): boolean {
+  return process.env.LLM_JSON_MODE !== "0";
 }
 
 export interface RuntimeConfigReport {
@@ -112,17 +148,24 @@ export function validateRuntimeConfig(): RuntimeConfigReport {
   if (!process.env.DATABASE_URL) {
     errors.push("DATABASE_URL is required");
   }
-  if (alphaEmailAllowlist().length === 0) {
+  if (
+    alphaEmailAllowlist().length === 0 &&
+    telegramAllowlist().length === 0
+  ) {
     errors.push(
-      "ALPHA_EMAIL_ALLOWLIST must be set: public email registration is disabled in alpha",
+      "At least one alpha allowlist is required: ALPHA_EMAIL_ALLOWLIST or TELEGRAM_ALLOWLIST",
     );
   }
-  if (emailProvider() === "none" || emailProvider() === "console") {
-    errors.push(
-      "Email delivery is not configured: set EMAIL_PROVIDER=resend or webhook",
+  const email = emailProvider();
+  if (email === "console") {
+    errors.push("EMAIL_PROVIDER=console is not allowed in production");
+  }
+  if (email === "none") {
+    warnings.push(
+      "Email delivery is disabled; magic link login returns 503",
     );
   }
-  if (emailProvider() === "resend") {
+  if (email === "resend") {
     if (!process.env.RESEND_API_KEY) {
       errors.push("RESEND_API_KEY is required for EMAIL_PROVIDER=resend");
     }
@@ -130,14 +173,31 @@ export function validateRuntimeConfig(): RuntimeConfigReport {
       errors.push("EMAIL_FROM is required for EMAIL_PROVIDER=resend");
     }
   }
-  if (emailProvider() === "webhook" && !process.env.EMAIL_WEBHOOK_URL) {
+  if (email === "webhook" && !process.env.EMAIL_WEBHOOK_URL) {
     errors.push("EMAIL_WEBHOOK_URL is required for EMAIL_PROVIDER=webhook");
   }
   if (!process.env.TELEGRAM_BOT_TOKEN) {
     warnings.push("TELEGRAM_BOT_TOKEN is not set; Telegram login is disabled");
   }
-  if (llmEnabled() && !process.env.GEMINI_API_KEY) {
-    warnings.push("GEMINI_API_KEY is not set; LLM uses the local parser");
+  if (llmEnabled()) {
+    const provider = llmProvider();
+    if (provider === "openai") {
+      if (!process.env.LLM_BASE_URL) {
+        errors.push("LLM_BASE_URL is required for LLM_PROVIDER=openai");
+      }
+      if (!process.env.LLM_API_KEY) {
+        errors.push("LLM_API_KEY is required for LLM_PROVIDER=openai");
+      }
+      if (!llmModel()) {
+        errors.push("LLM_MODEL is required for LLM_PROVIDER=openai");
+      }
+    } else if (provider === "gemini" && !process.env.GEMINI_API_KEY) {
+      errors.push("GEMINI_API_KEY is required for LLM_PROVIDER=gemini");
+    } else if (provider === "none") {
+      warnings.push(
+        "LLM provider is not configured; the local parser is used",
+      );
+    }
   }
 
   if (errors.length > 0) {

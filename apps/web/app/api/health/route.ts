@@ -14,6 +14,7 @@ export async function GET(): Promise<NextResponse> {
         llm: {
           enabled: llm.enabled,
           configured: llm.configured,
+          provider: llm.provider,
           model: llm.model,
         },
       },

@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./llm-contract";
+export * from "./llm-client";
 export * from "./metrics";
 export * from "./comparability";
 export * from "./safety";

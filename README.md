@@ -60,8 +60,9 @@ LLM. Эти сведения относятся к персональным, п�
 - Подтверждение, редактирование и отклонение рекомендации.
 - Copy-on-write версии плана, решения и audit.
 - Safety-гейты, red-флаги и пауза тренировочных рекомендаций.
-- Локальный парсер текста и опциональный LLM-парсер (Gemini) с fallback,
-  kill switch `LLM_ENABLED=0`, per-user и глобальным бюджетом.
+- Локальный парсер текста и опциональный LLM-парсер (routerai/OpenAI-compatible,
+  Gemini как альтернатива) с fallback, kill switch `LLM_ENABLED=0`, per-user и
+  глобальным бюджетом.
 - Golden dataset из 50 кейсов и `npm run test:llm-eval` с метриками red/yellow,
   numeric accuracy, invalid JSON и scope.
 - История по упражнениям, экспорт JSON, удаление аккаунта.
@@ -136,17 +137,21 @@ npm run dev
 | `AUTH_DEV_MODE` | `1` — демо-вход и ссылка входа в ответе; в production запрещён |
 | `APP_URL` | публичный URL для magic link; в production только `https` |
 | `ALLOWED_ORIGINS` | дополнительные origin для CSRF-проверки, через запятую |
-| `ALPHA_EMAIL_ALLOWLIST` | точные email или `*@domain`, которым разрешён вход; обязателен в production |
+| `ALPHA_EMAIL_ALLOWLIST` | точные email или `*@domain`; пустой список блокирует новые email-регистрации |
 | `TELEGRAM_BOT_TOKEN` | проверка `initData` Mini App и Login Widget |
 | `TELEGRAM_BOT_USERNAME` | username бота для Login Widget, без `@` |
 | `TELEGRAM_ALLOWLIST` | username/id, которым разрешена регистрация через Telegram |
-| `EMAIL_PROVIDER` | `resend`, `webhook`, `console` (dev) или `none` |
+| `EMAIL_PROVIDER` | `resend`, `webhook`, `console` (dev) или `none`; `none` скрывает email-вход |
 | `RESEND_API_KEY` / `EMAIL_FROM` | ключ и отправитель Resend |
 | `EMAIL_REPLY_TO` / `EMAIL_APP_NAME` | необязательные reply-to и имя в письме |
 | `EMAIL_WEBHOOK_URL` | webhook `{to, url}` для отправки magic link |
-| `GEMINI_API_KEY` | опциональный LLM-парсер; без ключа работает локальный |
 | `LLM_ENABLED` | `0` — kill switch, всегда локальный парсер |
-| `LLM_MODEL` | закреплённая модель, по умолчанию `gemini-2.5-flash` |
+| `LLM_PROVIDER` | `openai` (OpenAI-compatible), `gemini` или `none` |
+| `LLM_BASE_URL` | base URL провайдера, для alpha `https://routerai.ru/api/v1` |
+| `LLM_API_KEY` | ключ OpenAI-compatible провайдера; только серверный env |
+| `LLM_MODEL` | `~deepseek/deepseek-v4-flash-latest` для alpha |
+| `LLM_JSON_MODE` | `0` отключает `response_format=json_object` |
+| `GEMINI_API_KEY` | альтернативный Gemini-провайдер |
 | `LLM_DAILY_BUDGET_USD` / `LLM_MONTHLY_BUDGET_USD` | лимиты пользователя |
 | `LLM_GLOBAL_MONTHLY_BUDGET_USD` | общий месячный лимит всех пользователей |
 | `LLM_BUDGET_ALERT_RATIO` | порог предупреждения о бюджете, по умолчанию `0.8` |
@@ -155,7 +160,7 @@ npm run dev
 ## Команды
 
 ```bash
-npm test               # 136 доменных тестов, включая 50 golden-кейсов парсера
+npm test               # 140 доменных тестов, включая 50 golden-кейсов парсера
 npm run typecheck      # TypeScript во всех workspace
 npm run build          # production build Next.js
 npm run test:cycle     # полный симулятор 28 и 23 сессий на чистой test-БД
@@ -173,7 +178,8 @@ npm run db:push        # синхронизировать схему без ми
 Живой LLM-eval включается явно и требует ключ:
 
 ```bash
-LLM_EVAL_LIVE=1 GEMINI_API_KEY=... npm run test:llm-eval
+LLM_EVAL_LIVE=1 LLM_PROVIDER=openai LLM_BASE_URL=https://routerai.ru/api/v1 \
+  LLM_API_KEY=... LLM_MODEL=~deepseek/deepseek-v4-flash-latest npm run test:llm-eval
 ```
 
 `test:cycle` и `test:e2e` работают только с `chiron_test`: скрипты проверяют
@@ -289,7 +295,10 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
 - Удалённый аккаунт не восстанавливается magic link; email анонимизируется.
   Повторный вход на тот же email создаёт новый аккаунт.
 - Production не стартует без `AUTH_SECRET` ≥32 символов, HTTPS `APP_URL` и
-  настроенного email-провайдера.
+  явного решения по email: провайдер или `EMAIL_PROVIDER=none`; `console`
+  запрещён.
+- Alpha-домен закрыт от индексации: `robots.txt` с `Disallow: /`,
+  `X-Robots-Tag: noindex` и meta robots.
 
 ## Ограничения текущего среза
 
@@ -307,9 +316,9 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
   калибровки.
 - Офлайн-очередь подходов не реализована; PWA кэширует оболочку и работает
   онлайн для записи.
-- Golden parser dataset: 50 эталонных текстовых кейсов; всего 136 тестов.
-  Живой LLM-eval требует `GEMINI_API_KEY` и `LLM_EVAL_LIVE=1`.
-- Telegram и Gemini требуют внешних ключей; без них приложение работает в
+- Golden parser dataset: 50 эталонных текстовых кейсов; всего 140 тестов.
+  Живой LLM-eval требует ключ провайдера и `LLM_EVAL_LIVE=1`.
+- Telegram и LLM требуют внешних ключей; без них приложение работает в
   локальном/детерминированном режиме.
 - Связка Telegram с существующим Web-аккаунтом по короткому коду — P1-B.
 - IP rate limit хранится в памяти процесса; для нескольких инстансов нужен
@@ -334,7 +343,7 @@ npm run test:e2e
 Последний сквозной тестовый цикл: [`docs/testing/cycle-002-2026-10-24.md`](docs/testing/cycle-002-2026-10-24.md)
 (28/23 сессии, 106 доменных тестов, 22 Playwright-сценария, CI).
 P1-A: [`docs/testing/p1-alpha-readiness-2026-10-25.md`](docs/testing/p1-alpha-readiness-2026-10-25.md)
-(136 тестов, 50 golden-кейсов, 33 Playwright-сценария).
+(140 тестов, 50 golden-кейсов, 33 Playwright-сценария).
 Предыдущий цикл: [`docs/testing/cycle-001-2026-10-24.md`](docs/testing/cycle-001-2026-10-24.md).
 Технический отчёт сессии: [`docs/reports/technical-session-2026-10-24.md`](docs/reports/technical-session-2026-10-24.md).
 

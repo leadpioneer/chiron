@@ -7,10 +7,18 @@ import {
   LLM_RULES_VERSION,
   LLM_SCHEMA_VERSION,
   LLM_SYSTEM_PROMPT,
+  callOpenAiCompatible,
   parseWorkoutText,
 } from "@chiron/core";
 import { getDb, llmCalls } from "@chiron/db";
-import { llmEnabled, llmModel } from "./config";
+import {
+  llmApiKey,
+  llmBaseUrl,
+  llmEnabled,
+  llmJsonMode,
+  llmModel,
+  llmProvider,
+} from "./config";
 
 interface ParseResult {
   response: LlmResponse;
@@ -181,61 +189,169 @@ async function budgetState(userId: string): Promise<BudgetState> {
 export function llmStatus(): {
   enabled: boolean;
   configured: boolean;
+  provider: string;
   model: string;
 } {
   return {
     enabled: llmEnabled(),
-    configured: Boolean(process.env.GEMINI_API_KEY),
+    configured: Boolean(llmApiKey()),
+    provider: llmProvider(),
     model: llmModel(),
   };
 }
 
-function fallbackResult(
-  text: string,
-  provider: string,
-  validation: string,
-): ParseResult {
-  const started = Date.now();
-  return {
-    response: parseWorkoutText(text),
-    provider,
-    model: "deterministic-parser",
-    validation,
-    latencyMs: Date.now() - started,
-    costUsd: 0,
+async function fallbackAndRecord(input: {
+  userId: string;
+  text: string;
+  provider: string;
+  model: string;
+  validation: string;
+  latencyMs: number;
+  costUsd: number;
+}): Promise<LlmResponse> {
+  const result: ParseResult = {
+    response: parseWorkoutText(input.text),
+    provider: input.provider,
+    model: input.model,
+    validation: input.validation,
+    latencyMs: input.latencyMs,
+    costUsd: input.costUsd,
   };
+  await recordCall({ userId: input.userId, result, text: input.text });
+  return result.response;
+}
+
+async function callGemini(
+  apiKey: string,
+  model: string,
+  text: string,
+): Promise<string> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: LLM_SYSTEM_PROMPT }],
+        },
+        contents: [{ role: "user", parts: [{ text }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 800,
+          responseMimeType: "application/json",
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`LLM HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> };
+    }>;
+  };
+  const raw = payload.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!raw) throw new Error("LLM returned no text");
+  return raw;
+}
+
+async function finalizeProviderResult(input: {
+  userId: string;
+  text: string;
+  raw: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  costUsd: number;
+}): Promise<LlmResponse> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.raw);
+  } catch {
+    return fallbackAndRecord({
+      ...input,
+      validation: "json_rejected_fallback",
+    });
+  }
+
+  const validated = llmResponseSchema.safeParse(parsed);
+  if (!validated.success) {
+    return fallbackAndRecord({
+      ...input,
+      validation: "schema_rejected_fallback",
+    });
+  }
+
+  if (!numbersSupported(validated.data, input.text)) {
+    return fallbackAndRecord({
+      ...input,
+      validation: "numbers_rejected_fallback",
+    });
+  }
+
+  const result: ParseResult = {
+    response: validated.data,
+    provider: input.provider,
+    model: input.model,
+    validation: "valid",
+    latencyMs: input.latencyMs,
+    costUsd: input.costUsd,
+  };
+  await recordCall({ userId: input.userId, result, text: input.text });
+  return result.response;
 }
 
 export async function parseTextForUser(
   userId: string,
   text: string,
 ): Promise<LlmResponse> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const provider = llmProvider();
   const model = llmModel();
+  const apiKey = llmApiKey();
 
   if (!llmEnabled()) {
-    const result = fallbackResult(text, "disabled", "disabled_fallback");
-    await recordCall({ userId, result, text });
-    return result.response;
+    return fallbackAndRecord({
+      userId,
+      text,
+      provider: "disabled",
+      model: "deterministic-parser",
+      validation: "disabled_fallback",
+      latencyMs: 0,
+      costUsd: 0,
+    });
   }
 
-  if (!apiKey) {
-    const result = fallbackResult(text, "local", "fallback");
-    await recordCall({ userId, result, text });
-    return result.response;
+  if (provider === "none" || !apiKey || !model) {
+    return fallbackAndRecord({
+      userId,
+      text,
+      provider: "local",
+      model: "deterministic-parser",
+      validation: "fallback",
+      latencyMs: 0,
+      costUsd: 0,
+    });
   }
 
   const budget = await budgetState(userId);
   if (budget.exceeded) {
-    const result = fallbackResult(
+    return fallbackAndRecord({
+      userId,
       text,
-      budget.reason === "global" ? "global_budget" : "budget",
-      budget.reason === "global"
-        ? "global_budget_fallback"
-        : "budget_fallback",
-    );
-    await recordCall({ userId, result, text });
-    return result.response;
+      provider: budget.reason === "global" ? "global_budget" : "budget",
+      model: "deterministic-parser",
+      validation:
+        budget.reason === "global"
+          ? "global_budget_fallback"
+          : "budget_fallback",
+      latencyMs: 0,
+      costUsd: 0,
+    });
   }
 
   if (
@@ -243,96 +359,58 @@ export async function parseTextForUser(
       text,
     )
   ) {
-    const result = fallbackResult(text, "local", "injection_fallback");
-    await recordCall({ userId, result, text });
-    return result.response;
+    return fallbackAndRecord({
+      userId,
+      text,
+      provider: "local",
+      model: "deterministic-parser",
+      validation: "injection_fallback",
+      latencyMs: 0,
+      costUsd: 0,
+    });
   }
 
+  const providerLabel = provider === "openai" ? "routerai" : "google";
   const started = Date.now();
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        signal: AbortSignal.timeout(8000),
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: LLM_SYSTEM_PROMPT }],
-          },
-          contents: [{ role: "user", parts: [{ text }] }],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 800,
-            responseMimeType: "application/json",
-          },
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(`LLM HTTP ${response.status}`);
-    }
-
-    const payload = (await response.json()) as {
-      candidates?: Array<{
-        content?: { parts?: Array<{ text?: string }> };
-      }>;
-    };
-    const raw = payload.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!raw) throw new Error("LLM returned no text");
-    const costUsd = estimateCost(text, raw);
-    const parsed = llmResponseSchema.safeParse(JSON.parse(raw));
+    const raw =
+      provider === "openai"
+        ? (
+            await callOpenAiCompatible({
+              baseUrl: llmBaseUrl(),
+              apiKey,
+              model,
+              text,
+              timeoutMs: 15_000,
+              jsonMode: llmJsonMode(),
+            })
+          ).raw
+        : await callGemini(apiKey, model, text);
     const latencyMs = Date.now() - started;
-
-    if (!parsed.success) {
-      const fallback: ParseResult = {
-        response: parseWorkoutText(text),
-        provider: "google",
-        model,
-        validation: "schema_rejected_fallback",
-        latencyMs,
-        costUsd,
-      };
-      await recordCall({ userId, result: fallback, text });
-      return fallback.response;
-    }
-
-    if (!numbersSupported(parsed.data, text)) {
-      const fallback: ParseResult = {
-        response: parseWorkoutText(text),
-        provider: "google",
-        model,
-        validation: "numbers_rejected_fallback",
-        latencyMs,
-        costUsd,
-      };
-      await recordCall({ userId, result: fallback, text });
-      return fallback.response;
-    }
-
-    const result: ParseResult = {
-      response: parsed.data,
-      provider: "google",
+    const costUsd = estimateCost(text, raw);
+    return finalizeProviderResult({
+      userId,
+      text,
+      raw,
+      provider: providerLabel,
       model,
-      validation: "valid",
       latencyMs,
       costUsd,
-    };
-    await recordCall({ userId, result, text });
-    return result.response;
+    });
   } catch (error) {
     const latencyMs = Date.now() - started;
-    const fallback: ParseResult = {
-      response: parseWorkoutText(text),
-      provider: "google",
+    console.error(
+      "LLM parse failed, using local parser",
+      error instanceof Error ? error.message : error,
+    );
+    return fallbackAndRecord({
+      userId,
+      text,
+      provider: providerLabel,
       model,
       validation: "error_fallback",
       latencyMs,
       costUsd: 0,
-    };
-    console.error("LLM parse failed, using local parser", error);
-    await recordCall({ userId, result: fallback, text });
-    return fallback.response;
+    });
   }
 }
