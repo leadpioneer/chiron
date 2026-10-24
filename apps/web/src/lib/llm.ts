@@ -275,50 +275,37 @@ async function callGemini(
   return raw;
 }
 
-async function finalizeProviderResult(input: {
-  userId: string;
-  text: string;
-  raw: string;
-  provider: string;
-  model: string;
-  latencyMs: number;
-  costUsd: number;
-}): Promise<LlmResponse> {
+type ProviderInterpretation =
+  | { ok: true; response: LlmResponse }
+  | {
+      ok: false;
+      validation:
+        | "json_rejected_fallback"
+        | "schema_rejected_fallback"
+        | "numbers_rejected_fallback";
+    };
+
+function interpretProviderRaw(
+  raw: string,
+  text: string,
+): ProviderInterpretation {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(input.raw);
+    parsed = JSON.parse(raw);
   } catch {
-    return fallbackAndRecord({
-      ...input,
-      validation: "json_rejected_fallback",
-    });
+    return { ok: false, validation: "json_rejected_fallback" };
   }
 
   const validated = llmResponseSchema.safeParse(parsed);
   if (!validated.success) {
-    return fallbackAndRecord({
-      ...input,
-      validation: "schema_rejected_fallback",
-    });
+    return { ok: false, validation: "schema_rejected_fallback" };
   }
 
-  if (!numbersSupported(validated.data, input.text)) {
-    return fallbackAndRecord({
-      ...input,
-      validation: "numbers_rejected_fallback",
-    });
+  if (!numbersSupported(validated.data, text)) {
+    return { ok: false, validation: "numbers_rejected_fallback" };
   }
 
-  const result: ParseResult = {
-    response: validated.data,
-    provider: input.provider,
-    model: input.model,
-    validation: "valid",
-    latencyMs: input.latencyMs,
-    costUsd: input.costUsd,
-  };
-  await recordCall({ userId: input.userId, result, text: input.text });
-  return result.response;
+  return { ok: true, response: validated.data };
 }
 
 export async function parseTextForUser(
@@ -387,37 +374,58 @@ export async function parseTextForUser(
 
   const providerLabel = provider === "openai" ? "routerai" : "google";
   const started = Date.now();
+  let totalCostUsd = 0;
+  let lastValidation:
+    | "json_rejected_fallback"
+    | "schema_rejected_fallback"
+    | "numbers_rejected_fallback"
+    | "error_fallback" = "error_fallback";
   try {
-    let raw: string;
-    let costUsd: number;
-    if (provider === "openai") {
-      const result = await callOpenAiCompatible({
-        baseUrl: llmBaseUrl(),
-        apiKey,
-        model,
-        text,
-        timeoutMs: 15_000,
-        jsonMode: llmJsonMode(),
-        reasoningEffort: llmReasoningEffort(),
-      });
-      raw = result.raw;
-      costUsd = estimateCost(text, raw, result.usage);
-    } else {
-      raw = await callGemini(apiKey, model, text);
-      costUsd = estimateCost(text, raw);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let raw: string;
+      if (provider === "openai") {
+        const result = await callOpenAiCompatible({
+          baseUrl: llmBaseUrl(),
+          apiKey,
+          model,
+          text,
+          timeoutMs: 15_000,
+          jsonMode: llmJsonMode(),
+          reasoningEffort: llmReasoningEffort(),
+        });
+        raw = result.raw;
+        totalCostUsd += estimateCost(text, raw, result.usage);
+      } else {
+        raw = await callGemini(apiKey, model, text);
+        totalCostUsd += estimateCost(text, raw);
+      }
+
+      const interpreted = interpretProviderRaw(raw, text);
+      if (interpreted.ok) {
+        const result: ParseResult = {
+          response: interpreted.response,
+          provider: providerLabel,
+          model,
+          validation: "valid",
+          latencyMs: Date.now() - started,
+          costUsd: totalCostUsd,
+        };
+        await recordCall({ userId, result, text });
+        return result.response;
+      }
+      lastValidation = interpreted.validation;
+      if (interpreted.validation === "numbers_rejected_fallback") break;
     }
-    const latencyMs = Date.now() - started;
-    return finalizeProviderResult({
+    return fallbackAndRecord({
       userId,
       text,
-      raw,
       provider: providerLabel,
       model,
-      latencyMs,
-      costUsd,
+      validation: lastValidation,
+      latencyMs: Date.now() - started,
+      costUsd: totalCostUsd,
     });
   } catch (error) {
-    const latencyMs = Date.now() - started;
     console.error(
       "LLM parse failed, using local parser",
       error instanceof Error ? error.message : error,
@@ -428,8 +436,8 @@ export async function parseTextForUser(
       provider: providerLabel,
       model,
       validation: "error_fallback",
-      latencyMs,
-      costUsd: 0,
+      latencyMs: Date.now() - started,
+      costUsd: totalCostUsd,
     });
   }
 }

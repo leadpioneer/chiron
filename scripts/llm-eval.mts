@@ -72,7 +72,10 @@ function localPredictor(text: string): Promise<Prediction> {
   });
 }
 
-async function livePredictor(text: string): Promise<Prediction> {
+async function livePredictor(
+  text: string,
+  attempt = 0,
+): Promise<Prediction> {
   const explicit = (process.env.LLM_PROVIDER ?? "").trim().toLowerCase();
   const provider =
     explicit === "none" || explicit === "disabled"
@@ -200,6 +203,14 @@ async function livePredictor(text: string): Promise<Prediction> {
     try {
       parsed = JSON.parse(raw);
     } catch {
+      if (attempt === 0) {
+        const retry = await livePredictor(text, 1);
+        return {
+          ...retry,
+          costUsd: costUsd + retry.costUsd,
+          latencyMs: Date.now() - started,
+        };
+      }
       return {
         response: null,
         raw,
@@ -211,6 +222,14 @@ async function livePredictor(text: string): Promise<Prediction> {
     }
     const validated = llmResponseSchema.safeParse(parsed);
     if (!validated.success) {
+      if (attempt === 0) {
+        const retry = await livePredictor(text, 1);
+        return {
+          ...retry,
+          costUsd: costUsd + retry.costUsd,
+          latencyMs: Date.now() - started,
+        };
+      }
       return {
         response: null,
         raw,
