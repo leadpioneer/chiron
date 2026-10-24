@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkoutText } from "./text-parser";
+import { normalizeExerciseAlias, parseWorkoutText } from "./text-parser";
 
 describe("local parser", () => {
   it("parses weight, reps and RIR", () => {
@@ -36,5 +36,12 @@ describe("local parser", () => {
     const result = parseWorkoutText("сделал жим");
     expect(result.missingFields).toContain("sets");
     expect(result.parsedFacts.sets).toHaveLength(0);
+  });
+
+  it("normalizes provider aliases to catalog names", () => {
+    expect(normalizeExerciseAlias("жим")).toBe("жим лёжа");
+    expect(normalizeExerciseAlias("гравитрон")).toBe("подтягивания");
+    expect(normalizeExerciseAlias("махи")).toBe("средняя дельта");
+    expect(normalizeExerciseAlias(null)).toBeNull();
   });
 });

@@ -6,7 +6,10 @@ config({ path: path.resolve(process.cwd(), ".env") });
 const {
   GOLDEN_PARSER_CASES,
   LLM_SYSTEM_PROMPT,
+  assessSafety,
   callOpenAiCompatible,
+  mergeSafetyAssessments,
+  normalizeExerciseAlias,
   parseWorkoutText,
 } = await import("@chiron/core");
 const { llmResponseSchema } = await import("@chiron/contracts");
@@ -39,6 +42,7 @@ interface Metrics {
   yellowRecall: number;
   greenExpected: number;
   greenFalsePositives: number;
+  llmSafetyMismatches: number;
   invalidJson: number;
   invalidJsonRate: number;
   scopeViolations: number;
@@ -262,6 +266,7 @@ function evaluate(
     let yellowMatched = 0;
     let greenExpected = 0;
     let greenFalsePositives = 0;
+    let llmSafetyMismatches = 0;
     let invalidJson = 0;
     let scope = 0;
     let totalCostUsd = 0;
@@ -286,7 +291,9 @@ function evaluate(
       }
 
       scope += scopeViolations(response);
-      const actualExercise = response.parsedFacts.exerciseAlias;
+      const actualExercise = normalizeExerciseAlias(
+        response.parsedFacts.exerciseAlias,
+      );
       if (actualExercise === testCase.exercise) {
         exerciseMatches += 1;
       } else {
@@ -324,10 +331,27 @@ function evaluate(
       const observationCodes = response.safetyObservations.map(
         (item) => item.code,
       );
-      const predictedSafety = observationCodes.includes("RED")
+      const llmSafetyLabel = observationCodes.includes("RED")
         ? "RED"
         : (observationCodes.find((code) => code.startsWith("YELLOW")) ??
           "GREEN");
+      const predictedSafety = mergeSafetyAssessments(
+        assessSafety({ text: testCase.text }),
+        {
+          label: llmSafetyLabel,
+          reasons: [],
+          blockProgression: llmSafetyLabel !== "GREEN",
+          pause: llmSafetyLabel === "RED",
+          escalate: llmSafetyLabel === "RED",
+        },
+      ).label;
+      if (testCase.safety === "RED") {
+        if (llmSafetyLabel !== "RED") llmSafetyMismatches += 1;
+      } else if (testCase.safety.startsWith("YELLOW")) {
+        if (llmSafetyLabel === "GREEN") llmSafetyMismatches += 1;
+      } else if (llmSafetyLabel !== "GREEN") {
+        llmSafetyMismatches += 1;
+      }
       if (testCase.safety === "RED") {
         redExpected += 1;
         if (predictedSafety === "RED") redMatched += 1;
@@ -368,6 +392,7 @@ function evaluate(
       yellowRecall: yellowExpected ? yellowMatched / yellowExpected : 1,
       greenExpected,
       greenFalsePositives,
+      llmSafetyMismatches,
       invalidJson,
       invalidJsonRate: casesCount ? invalidJson / casesCount : 0,
       scopeViolations: scope,
@@ -399,6 +424,9 @@ function printReport(metrics: Metrics): void {
   );
   console.info(
     `  green false pos:  ${metrics.greenFalsePositives}/${metrics.greenExpected}`,
+  );
+  console.info(
+    `  LLM safety mismatches (diagnostic): ${metrics.llmSafetyMismatches}`,
   );
   console.info(
     `  invalid JSON:     ${metrics.invalidJson} (${pct(metrics.invalidJsonRate)})`,

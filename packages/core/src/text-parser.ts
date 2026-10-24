@@ -54,6 +54,24 @@ function detectExercise(text: string): string | null {
   return null;
 }
 
+export function normalizeExerciseAlias(alias: string | null): string | null {
+  if (!alias) return null;
+  const normalized = alias.trim();
+  const lower = normalized.toLowerCase();
+  for (const item of EXERCISE_ALIASES) {
+    if (
+      lower === item.canonical ||
+      item.aliases.some(
+        (candidate) =>
+          lower === candidate || lower.includes(candidate),
+      )
+    ) {
+      return item.canonical;
+    }
+  }
+  return normalized || null;
+}
+
 function parseNumber(value: string): number {
   return Number(value.replace(",", "."));
 }
