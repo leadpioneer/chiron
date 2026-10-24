@@ -12,3 +12,6 @@ coverage/
 *.log
 .tmp-*
 .dev-pgdata/
+
+playwright-report/
+test-results/

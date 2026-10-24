@@ -11,13 +11,39 @@ import {
   getTemplateForCycle,
 } from "@/src/lib/plan-service";
 import { getPendingRecommendations } from "@/src/lib/recommendation-service";
+import {
+  getPauseStateForUser,
+  getReturnPreview,
+} from "@/src/lib/return-service";
+import { toCycleReviewState } from "@/src/lib/cycle-review-service";
 import { formatDate, formatRange, formatWeight, todayIso } from "@/src/lib/dates";
 import { StartSessionButton } from "@/src/components/StartSessionButton";
 import { StartNextCycleButton } from "@/src/components/StartNextCycleButton";
 import { SkipSessionButton } from "@/src/components/SkipSessionButton";
+import { RescheduleSessionButton } from "@/src/components/RescheduleSessionButton";
+import { ReturnCard } from "@/src/components/ReturnCard";
+import { CycleReviewCard } from "@/src/components/CycleReviewCard";
 import { WeeklyCheck } from "@/src/components/WeeklyCheck";
 
 export const metadata = { title: "Сегодня" };
+
+function calibrationLabel(item: {
+  loadMode: string;
+  weightKg: number | null;
+  assistanceKg: number | null;
+  addedKg: number | null;
+}): string | null {
+  if (item.loadMode === "EXTERNAL" && item.weightKg === null) {
+    return "Калибровка: введите рабочий вес";
+  }
+  if (item.loadMode === "ASSISTED" && item.assistanceKg === null) {
+    return "Калибровка: введите помощь";
+  }
+  if (item.loadMode === "BODYWEIGHT_PLUS" && item.addedKg === null) {
+    return "Калибровка: введите добавленный вес";
+  }
+  return null;
+}
 
 export default async function TodayPage() {
   const user = await getCurrentUser();
@@ -81,6 +107,20 @@ export default async function TodayPage() {
   const view = await getSessionView(nextSession.id, user.id);
   if (!view) redirect("/today");
 
+  const pause =
+    nextSession.status === "PLANNED"
+      ? await getPauseStateForUser(user.id, cycle)
+      : null;
+  const reviewState = pause ? toCycleReviewState(pause) : null;
+  const reviewRequired = reviewState?.required ?? false;
+  const returnPreview =
+    nextSession.status === "PLANNED" &&
+    !nextSession.isReturn &&
+    (pause?.phase === "RETURN_1" || pause?.phase === "RETURN_2")
+      ? await getReturnPreview(user.id, nextSession.id)
+      : null;
+  const returnRequired = returnPreview !== null;
+
   const statusRows = await getDb()
     .select({ status: sessions.status, value: count() })
     .from(sessions)
@@ -107,6 +147,9 @@ export default async function TodayPage() {
     <div>
       <p className="eyebrow">Следующая тренировка</p>
       <h1 className="page-title">{view.session.sessionKey === "A" ? "Тяни" : "Толкай"}</h1>
+      {nextSession.isReturn ? (
+        <span className="badge badge-primary">Возвращение</span>
+      ) : null}
       <p className="subtitle">
         {formatDate(nextSession.plannedDate)} · цикл{" "}
         {template?.name ?? "Тяни / Толкай"}.
@@ -132,12 +175,28 @@ export default async function TodayPage() {
             </p>
           </div>
           <div className="row wrap" style={{ alignItems: "stretch" }}>
-            <StartSessionButton
-              sessionId={nextSession.id}
-              inProgress={nextSession.status === "IN_PROGRESS"}
-            />
-            {nextSession.status === "PLANNED" ? (
-              <SkipSessionButton sessionId={nextSession.id} />
+            {returnRequired ? (
+              <a className="btn btn-primary" href="#return">
+                Подготовить возвращение
+              </a>
+            ) : reviewRequired ? (
+              <span className="badge badge-warning">Нужен пересмотр цикла</span>
+            ) : (
+              <StartSessionButton
+                sessionId={nextSession.id}
+                inProgress={nextSession.status === "IN_PROGRESS"}
+              />
+            )}
+            {nextSession.status === "PLANNED" && !reviewRequired ? (
+              <>
+                <RescheduleSessionButton
+                  sessionId={nextSession.id}
+                  currentDate={nextSession.plannedDate}
+                  today={todayIso()}
+                  cycleEndDate={cycle.endDate}
+                />
+                <SkipSessionButton sessionId={nextSession.id} />
+              </>
             ) : null}
           </div>
         </div>
@@ -160,6 +219,18 @@ export default async function TodayPage() {
           </div>
         </div>
       </section>
+
+      {returnPreview ? <ReturnCard preview={returnPreview} /> : null}
+
+      {reviewRequired && reviewState ? (
+        <CycleReviewCard
+          cycleId={cycle.id}
+          reason={reviewState.reason}
+          pauseDays={reviewState.pauseDays}
+          lastTrainingDate={reviewState.lastTrainingDate}
+          safety={reviewState.safety}
+        />
+      ) : null}
 
       {showWeeklyCheck ? <WeeklyCheck /> : null}
 
@@ -220,7 +291,10 @@ export default async function TodayPage() {
                   <div className="exercise-meta">
                     <span className="tiny muted">
                       {item.sets} × {formatRange(item.repMin, item.repMax)} ·
-                      цель {item.targetReps} · RIR {item.targetRir}
+                      цель {item.targetReps} · RIR{" "}
+                      {nextSession.isReturn && item.targetRir < 3
+                        ? "3–4"
+                        : item.targetRir}
                     </span>
                     <span className="tiny muted">
                       {item.loadMode === "ASSISTED"
@@ -233,6 +307,14 @@ export default async function TodayPage() {
                     </span>
                     {item.optional ? (
                       <span className="badge">необязательно</span>
+                    ) : null}
+                    {calibrationLabel(item) ? (
+                      <span
+                        className="tiny"
+                        style={{ color: "var(--amber)" }}
+                      >
+                        {calibrationLabel(item)}
+                      </span>
                     ) : null}
                   </div>
                 </div>

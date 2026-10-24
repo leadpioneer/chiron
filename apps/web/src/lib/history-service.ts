@@ -55,6 +55,7 @@ export interface AuditHistory {
   id: string;
   entity: string;
   eventType: string;
+  payload: unknown;
   createdAt: string;
 }
 
@@ -100,7 +101,11 @@ export async function getHistory(userId: string): Promise<{
         eq(sessions.status, "COMPLETED"),
       ),
     )
-    .orderBy(asc(sessions.actualDate), asc(setPerformances.actualOrder));
+    .orderBy(
+      asc(sessions.actualDate),
+      asc(sessions.sessionIndex),
+      asc(setPerformances.actualOrder),
+    );
 
   const byVariant = new Map<
     string,
@@ -229,6 +234,7 @@ export async function getHistory(userId: string): Promise<{
       id: auditEvents.id,
       entity: auditEvents.entity,
       eventType: auditEvents.eventType,
+      payload: auditEvents.payload,
       createdAt: auditEvents.createdAt,
     })
     .from(auditEvents)
@@ -250,6 +256,7 @@ export async function getHistory(userId: string): Promise<{
       id: row.id,
       entity: row.entity,
       eventType: row.eventType,
+      payload: row.payload,
       createdAt: row.createdAt.toISOString(),
     })),
   };

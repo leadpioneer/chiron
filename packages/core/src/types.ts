@@ -57,6 +57,7 @@ export interface Exposure {
   plannedRepMax: number;
   targetReps: number;
   targetRir: number;
+  duringReturn?: boolean;
 }
 
 export interface WellnessSnapshot {
@@ -108,6 +109,7 @@ export interface SessionRecommendationInput {
   wellness: WellnessSnapshot | null;
   sessionRpe: SessionRpe | null;
   safety?: SafetyAssessment;
+  returnPhase?: boolean;
 }
 
 export interface ProfileDraft {

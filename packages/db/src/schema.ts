@@ -175,6 +175,8 @@ export const trainingCycles = pgTable(
     endDate: date("end_date", { mode: "string" }).notNull(),
     status: text("status").notNull().default("ACTIVE"),
     currentPlanVersionId: uuid("current_plan_version_id"),
+    returnPhaseSessions: integer("return_phase_sessions").notNull().default(0),
+    closeReason: text("close_reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -288,6 +290,8 @@ export const sessions = pgTable(
     plannedDate: date("planned_date", { mode: "string" }).notNull(),
     actualDate: date("actual_date", { mode: "string" }),
     status: text("status").notNull().default("PLANNED"),
+    rescheduledFrom: date("rescheduled_from", { mode: "string" }),
+    isReturn: boolean("is_return").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

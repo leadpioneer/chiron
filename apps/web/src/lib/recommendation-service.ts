@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, max } from "drizzle-orm";
 import type {
   DecisionInput,
   LoadMode,
@@ -255,13 +255,17 @@ function mapWellness(
   };
 }
 
-export async function createSessionRecommendations(input: {
-  userId: string;
-  sessionId: string;
-  sessionRpe: SessionRpe;
-  comment: string | null;
-}): Promise<RecommendationView[]> {
+export async function createSessionRecommendations(
+  input: {
+    userId: string;
+    sessionId: string;
+    sessionRpe: SessionRpe;
+    comment: string | null;
+  },
+  options: { today?: string } = {},
+): Promise<RecommendationView[]> {
   const db = getDb();
+  const today = options.today ?? todayIso();
   const sessionRows = await db
     .select({ session: sessions, cycle: trainingCycles })
     .from(sessions)
@@ -306,7 +310,7 @@ export async function createSessionRecommendations(input: {
 
   await db
     .update(sessions)
-    .set({ status: "COMPLETED", actualDate: todayIso() })
+    .set({ status: "COMPLETED", actualDate: today })
     .where(eq(sessions.id, input.sessionId));
 
   await db
@@ -385,7 +389,7 @@ export async function createSessionRecommendations(input: {
     const exposures = await getExposuresForVariant(
       sessionRow.cycle.id,
       row.prescription.exerciseVariantId,
-      { limit: 5 },
+      { limit: 5, today },
     );
     const pain = setRows.some(
       (set) => set.prescriptionId === row.prescription.id && set.pain,
@@ -405,6 +409,7 @@ export async function createSessionRecommendations(input: {
     wellness,
     sessionRpe: input.sessionRpe,
     safety: globalSafety,
+    returnPhase: sessionRow.session.isReturn,
   });
 
   const timestamp = new Date();
@@ -801,10 +806,22 @@ export async function applyDecision(input: {
   );
 
   await db.transaction(async (tx) => {
+    await tx
+      .select({ id: trainingCycles.id })
+      .from(trainingCycles)
+      .where(eq(trainingCycles.id, found.cycle.id))
+      .for("update");
+
+    const versionRows = await tx
+      .select({ value: max(planVersions.version) })
+      .from(planVersions)
+      .where(eq(planVersions.cycleId, found.cycle.id));
+    const nextVersion = (versionRows[0]?.value ?? 0) + 1;
+
     await tx.insert(planVersions).values({
       id: newVersionId,
       cycleId: found.cycle.id,
-      version: currentVersion.version + 1,
+      version: nextVersion,
       parentVersionId: currentVersion.id,
       reason: `Решение: ${action}`,
       decisionId,
@@ -926,6 +943,7 @@ export async function applyDecision(input: {
         and(
           eq(sessions.cycleId, found.cycle.id),
           eq(sessions.status, "PLANNED"),
+          eq(sessions.isReturn, false),
         ),
       );
 
@@ -991,7 +1009,7 @@ export async function applyDecision(input: {
       },
       versions: {
         rules: found.recommendation.rulesVersion,
-        plan: currentVersion.version + 1,
+        plan: nextVersion,
       },
     });
   });

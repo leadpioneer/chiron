@@ -30,6 +30,10 @@ body {
   min-height: 100%;
 }
 
+html {
+  scroll-padding-bottom: 130px;
+}
+
 body {
   margin: 0;
   background:
@@ -907,7 +911,16 @@ button {
 
 @media (max-width: 760px) {
   .shell {
-    padding: 18px 15px 100px;
+    padding: 18px 15px calc(150px + env(safe-area-inset-bottom));
+  }
+
+  .field,
+  .chip,
+  .btn,
+  .input,
+  .select,
+  .textarea {
+    scroll-margin-bottom: 140px;
   }
 
   .topbar-inner {
@@ -942,7 +955,7 @@ button {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
     z-index: 30;
     display: grid;
     grid-template-columns: repeat(3, 1fr);

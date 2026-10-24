@@ -79,6 +79,7 @@ interface ClientView {
     sessionKey: string;
     plannedDate: string;
     status: string;
+    isReturn: boolean;
   };
   blocks: ClientBlock[];
   sets: SavedSet[];
@@ -154,6 +155,25 @@ function buildInitialRows(view: ClientView): Record<string, Row[]> {
     }
   }
   return result;
+}
+
+function calibrationHint(prescription: ClientPrescription): string | null {
+  if (prescription.loadMode === "EXTERNAL" && prescription.weightKg === null) {
+    return "Калибровка: введите рабочий вес. Он станет базой для следующих сессий.";
+  }
+  if (
+    prescription.loadMode === "ASSISTED" &&
+    prescription.assistanceKg === null
+  ) {
+    return "Калибровка: введите помощь гравитрона. Она станет базой для следующих сессий.";
+  }
+  if (
+    prescription.loadMode === "BODYWEIGHT_PLUS" &&
+    prescription.addedKg === null
+  ) {
+    return "Калибровка: введите добавленный вес. Он станет базой для следующих сессий.";
+  }
+  return null;
 }
 
 function lastSetSummary(prescription: ClientPrescription): string {
@@ -510,6 +530,9 @@ export function SessionLogger({ view }: { view: ClientView }) {
           <h1 className="page-title">
             {view.session.sessionKey === "A" ? "Тяни" : "Толкай"}
           </h1>
+          {view.session.isReturn ? (
+            <span className="badge badge-primary">Возвращение</span>
+          ) : null}
           <p className="subtitle" style={{ marginBottom: 0 }}>
             {formatDate(view.session.plannedDate)} · сохранено подходов:{" "}
             {savedCount}
@@ -520,6 +543,14 @@ export function SessionLogger({ view }: { view: ClientView }) {
           К сегодня
         </Link>
       </div>
+
+      {view.session.isReturn ? (
+        <div className="notice" style={{ marginBottom: 14 }}>
+          <strong>Возвращение после паузы.</strong> Нагрузка снижена, целевой RIR
+          3–4. Прогрессия временно заблокирована: задача — повторить нагрузку и
+          восстановить переносимость.
+        </div>
+      ) : null}
 
       {readOnly ? (
         <div className="notice" style={{ marginBottom: 14 }}>
@@ -684,7 +715,9 @@ export function SessionLogger({ view }: { view: ClientView }) {
                       {prescription.sets} ×{" "}
                       {formatRange(prescription.repMin, prescription.repMax)} ·
                       цель {prescription.targetReps} · RIR{" "}
-                      {prescription.targetRir}
+                      {view.session.isReturn && prescription.targetRir < 3
+                        ? "3–4"
+                        : prescription.targetRir}
                     </div>
                   </div>
                   <span
@@ -711,6 +744,15 @@ export function SessionLogger({ view }: { view: ClientView }) {
                     <span className="badge">вес одной гантели</span>
                   ) : null}
                 </div>
+
+                {calibrationHint(prescription) ? (
+                  <p
+                    className="tiny"
+                    style={{ color: "var(--amber)", margin: "6px 0 0" }}
+                  >
+                    {calibrationHint(prescription)}
+                  </p>
+                ) : null}
 
                 {prescription.technique &&
                 prescription.technique.instructions.length > 0 ? (

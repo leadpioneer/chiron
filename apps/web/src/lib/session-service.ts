@@ -8,6 +8,7 @@ import {
   wellnessChecks,
 } from "@chiron/db";
 import { getSessionView } from "./plan-service";
+import { getPauseStateForUser } from "./return-service";
 import { todayIso } from "./dates";
 
 export class SessionError extends Error {
@@ -34,6 +35,7 @@ function ensureActiveCycle(view: Awaited<ReturnType<typeof getSessionView>>) {
 export async function startSession(
   userId: string,
   sessionId: string,
+  options: { today?: string } = {},
 ): Promise<void> {
   const view = await getSessionView(sessionId, userId);
   if (!view) {
@@ -45,6 +47,32 @@ export async function startSession(
   }
   if (view.session.status === "SKIPPED") {
     throw new SessionError("SESSION_SKIPPED", "Тренировка пропущена", 409);
+  }
+
+  const pause = await getPauseStateForUser(userId, view.cycle, options);
+  if (pause.phase === "LONG") {
+    throw new SessionError(
+      "CYCLE_REVIEW_REQUIRED",
+      "После паузы нужно пересмотреть цикл",
+      409,
+    );
+  }
+  if (pause.phase === "SAFETY") {
+    throw new SessionError(
+      "SAFETY_PAUSE",
+      "Тренировочные рекомендации приостановлены. Нужен пересмотр или очная оценка.",
+      409,
+    );
+  }
+  if (
+    (pause.phase === "RETURN_1" || pause.phase === "RETURN_2") &&
+    !view.session.isReturn
+  ) {
+    throw new SessionError(
+      "RETURN_REQUIRED",
+      "Сначала подготовьте возвращение после паузы",
+      409,
+    );
   }
 
   if (view.session.status === "PLANNED") {

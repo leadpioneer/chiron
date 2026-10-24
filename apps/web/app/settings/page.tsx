@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { athleteProfiles, getDb } from "@chiron/db";
@@ -111,6 +112,23 @@ export default async function SettingsPage() {
           </p>
         ) : null}
       </section>
+
+      {cycle ? (
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <h2 className="card-title">Цикл</h2>
+              <p className="small muted" style={{ margin: "4px 0 0" }}>
+                Ручной пересмотр закроет текущий цикл и создаст новый на 8
+                недель. Первые 4 сессии будут возвратными.
+              </p>
+            </div>
+          </div>
+          <Link className="btn" href="/cycle/review">
+            Пересмотреть цикл
+          </Link>
+        </section>
+      ) : null}
 
       <section className="card">
         <div className="card-head">

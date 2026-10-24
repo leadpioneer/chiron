@@ -76,7 +76,11 @@ export function isDeclining(exposures: Exposure[]): boolean {
   const latest = usable[0];
   if (!latest) return false;
 
-  const sameTarget = usable.filter(
+  const scoped = usable.filter(
+    (exposure) =>
+      Boolean(exposure.duringReturn) === Boolean(latest.duringReturn),
+  );
+  const sameTarget = scoped.filter(
     (exposure) => exposure.targetReps === latest.targetReps,
   );
   if (sameTarget.length < 2) return false;
@@ -294,12 +298,30 @@ function calibrationChange(
   return null;
 }
 
+function returnDraft(
+  prescription: PrescriptionSnapshot,
+  safety: SafetyAssessment,
+): RecommendationDraft {
+  return makeDraft({
+    action: "HOLD",
+    prescription,
+    reasons: [
+      "Это сессия возвращения после паузы. Прогрессия возобновится после возвратной фазы.",
+    ],
+    ruleIds: ["RETURN_PHASE"],
+    safety,
+    explanation:
+      "Нагрузка уже снижена для возвращения. Сейчас задача — повторить её без повышения и восстановить переносимость.",
+  });
+}
+
 export function recommendProgression(input: {
   prescription: PrescriptionSnapshot;
   exposures: Exposure[];
   safety: SafetyAssessment;
+  returnPhase?: boolean;
 }): RecommendationDraft {
-  const { prescription, exposures, safety } = input;
+  const { prescription, exposures, safety, returnPhase = false } = input;
   const latest = exposures[0];
   const previous = exposures[1];
 
@@ -307,6 +329,8 @@ export function recommendProgression(input: {
   if (safety.label === "YELLOW_ILLNESS" || safety.label === "YELLOW_SYSTEMIC") {
     return safetyDraft(prescription, safety);
   }
+
+  if (returnPhase) return returnDraft(prescription, safety);
 
   if (!latest) {
     return makeDraft({
@@ -453,6 +477,7 @@ export function recommendProgression(input: {
       prescription.sets < 3 &&
       topRangeExposure(latest, prescription) &&
       previous !== undefined &&
+      Boolean(previous.duringReturn) === Boolean(latest.duringReturn) &&
       topRangeExposure(previous, prescription) &&
       rir >= prescription.targetRir + 1
     ) {
@@ -501,6 +526,7 @@ export function recommendProgression(input: {
 
     if (
       previous !== undefined &&
+      Boolean(previous.duringReturn) === Boolean(latest.duringReturn) &&
       topRangeExposure(previous, prescription) &&
       (minRir(completedWorkingSets(previous)) ?? -1) >= prescription.targetRir
     ) {
@@ -593,7 +619,7 @@ export function recommendSession(
     (input.wellness?.sleepHours ?? 24) < 6 ||
     input.sessionRpe === "MAX";
 
-  if (decliningPrimaries.length >= 2 && systemic) {
+  if (decliningPrimaries.length >= 2 && systemic && !input.returnPhase) {
     const changes: ProposalChange[] = decliningPrimaries.map((item) => {
       const p = item.prescription;
       const change: ProposalChange = {
@@ -641,6 +667,7 @@ export function recommendSession(
       prescription: item.prescription,
       exposures: item.exposures,
       safety,
+      returnPhase: input.returnPhase,
     });
   });
 }

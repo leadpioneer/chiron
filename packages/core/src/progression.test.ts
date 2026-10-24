@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isDeclining,
   recommendProgression,
   recommendSession,
 } from "./progression";
@@ -367,6 +368,84 @@ describe("progression", () => {
     expect(drafts).toHaveLength(1);
     expect(drafts[0]?.action).toBe("PAUSE");
     expect(drafts[0]?.scopeType).toBe("SESSION");
+  });
+
+  it("holds during the return phase even at the top of the range", () => {
+    const result = recommendProgression({
+      prescription: prescription(),
+      exposures: [exposure([8, 8, 8], { rir: 3 })],
+      safety: green,
+      returnPhase: true,
+    });
+    expect(result.action).toBe("HOLD");
+    expect(result.ruleIds).toContain("RETURN_PHASE");
+    expect(result.changes).toHaveLength(0);
+  });
+
+  it("keeps safety priority during the return phase", () => {
+    const result = recommendProgression({
+      prescription: prescription(),
+      exposures: [exposure([8, 8, 8], { rir: 3 })],
+      safety: {
+        ...green,
+        label: "RED",
+        blockProgression: true,
+        pause: true,
+        escalate: true,
+      },
+      returnPhase: true,
+    });
+    expect(result.action).toBe("PAUSE");
+    expect(result.ruleIds).toContain("SAFETY_RED");
+  });
+
+  it("does not compare return exposures with normal ones as a decline", () => {
+    const returnExposure = exposure([5, 5, 5], {
+      id: "return",
+    });
+    returnExposure.duringReturn = true;
+    const normalExposure = exposure([8, 8, 8], { id: "normal" });
+    expect(isDeclining([returnExposure, normalExposure])).toBe(false);
+    expect(
+      isDeclining([
+        { ...returnExposure, id: "return-2" },
+        { ...returnExposure, id: "return-1" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("does not deload during the return phase", () => {
+    const drafts = recommendSession({
+      sessionId: "session-1",
+      wellness: { ...wellness, fatigue: 5, sleepHours: 5 },
+      sessionRpe: "MAX",
+      safety: green,
+      returnPhase: true,
+      primaries: [
+        {
+          prescription: prescription({ id: "bench", targetBlockKey: "press" }),
+          exposures: [
+            exposure([5, 5, 5], { id: "b-latest" }),
+            exposure([7, 7, 7], { id: "b-prev" }),
+          ],
+        },
+        {
+          prescription: prescription({
+            id: "squat",
+            targetBlockKey: "squat",
+            exerciseName: "Присед",
+          }),
+          exposures: [
+            exposure([5, 5, 5], { id: "s-latest" }),
+            exposure([7, 7, 7], { id: "s-prev" }),
+          ],
+        },
+      ],
+    });
+    expect(drafts.map((draft) => draft.action)).toEqual(["HOLD", "HOLD"]);
+    expect(drafts.every((draft) => draft.ruleIds.includes("RETURN_PHASE"))).toBe(
+      true,
+    );
   });
 
   it("keeps two primaries independent", () => {

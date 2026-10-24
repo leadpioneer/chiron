@@ -23,6 +23,7 @@ export default async function SessionPage({
       sessionKey: view.session.sessionKey,
       plannedDate: view.session.plannedDate,
       status: view.session.status,
+      isReturn: view.session.isReturn,
     },
     blocks: view.blocks.map((block) => ({
       id: block.id,

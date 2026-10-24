@@ -63,6 +63,8 @@ export interface ActiveCycle {
   endDate: string;
   status: string;
   currentPlanVersionId: string | null;
+  returnPhaseSessions: number;
+  closeReason: string | null;
 }
 
 export async function getActiveCycle(
@@ -91,6 +93,7 @@ export async function getNextSession(
   sessionKey: string;
   plannedDate: string;
   status: string;
+  isReturn: boolean;
 } | null> {
   const db = getDb();
   const rows = await db
@@ -100,6 +103,7 @@ export async function getNextSession(
       sessionKey: sessions.sessionKey,
       plannedDate: sessions.plannedDate,
       status: sessions.status,
+      isReturn: sessions.isReturn,
     })
     .from(sessions)
     .where(
@@ -116,6 +120,7 @@ export async function getNextSession(
 export async function createCycleForUser(
   userId: string,
   input: OnboardingInput,
+  options: { today?: string } = {},
 ): Promise<string> {
   const db = getDb();
   const existing = await getActiveCycle(userId);
@@ -178,7 +183,7 @@ export async function createCycleForUser(
     bodyweightKg: input.bodyweightKg,
   });
 
-  const startDate = todayIso();
+  const startDate = options.today ?? todayIso();
   const endDate = cycleEndDate(startDate, 8);
   const schedule = generateSessionSchedule(
     startDate,
@@ -416,6 +421,8 @@ export interface SessionView {
     plannedDate: string;
     actualDate: string | null;
     status: string;
+    rescheduledFrom: string | null;
+    isReturn: boolean;
   };
   cycle: ActiveCycle;
   blocks: BlockView[];
@@ -439,6 +446,7 @@ export interface SessionView {
 export async function getSessionView(
   sessionId: string,
   userId: string,
+  options: { today?: string } = {},
 ): Promise<SessionView | null> {
   const db = getDb();
   const rows = await db
@@ -534,7 +542,7 @@ export async function getSessionView(
     const exposures = await getExposuresForVariant(
       cycle.id,
       item.prescription.exerciseVariantId,
-      { excludeSessionId: sessionId, limit: 1 },
+      { excludeSessionId: sessionId, limit: 1, today: options.today },
     );
     block.prescriptions.push({
       id: item.prescription.id,
@@ -585,7 +593,7 @@ export async function getSessionView(
 export async function getExposuresForVariant(
   cycleId: string,
   exerciseVariantId: string,
-  options: { limit?: number; excludeSessionId?: string } = {},
+  options: { limit?: number; excludeSessionId?: string; today?: string } = {},
 ): Promise<Exposure[]> {
   const db = getDb();
   const rows = await db
@@ -593,6 +601,7 @@ export async function getExposuresForVariant(
       sessionId: sessions.id,
       actualDate: sessions.actualDate,
       plannedDate: sessions.plannedDate,
+      isReturn: sessions.isReturn,
       set: setPerformances,
       prescription: prescriptions,
     })
@@ -609,10 +618,16 @@ export async function getExposuresForVariant(
         eq(sessions.status, "COMPLETED"),
       ),
     )
-    .orderBy(desc(sessions.actualDate), asc(setPerformances.actualOrder));
+    .orderBy(
+      desc(sessions.actualDate),
+      desc(sessions.sessionIndex),
+      asc(setPerformances.actualOrder),
+    );
 
   const bySession = new Map<string, Exposure>();
-  const cutoff = Date.now() - 42 * 86_400_000;
+  const today = options.today ?? todayIso();
+  const cutoff =
+    Date.parse(`${today}T00:00:00.000Z`) - 42 * 86_400_000;
 
   for (const row of rows) {
     if (options.excludeSessionId && row.sessionId === options.excludeSessionId) {
@@ -645,6 +660,7 @@ export async function getExposuresForVariant(
         plannedRepMax: row.prescription.repMax,
         targetReps: row.prescription.targetReps,
         targetRir: row.prescription.targetRir,
+        duringReturn: row.isReturn,
       });
     }
   }
@@ -672,8 +688,12 @@ export async function getTemplateForCycle(
 }
 
 
-export async function advanceCycle(userId: string): Promise<string> {
+export async function advanceCycle(
+  userId: string,
+  options: { today?: string } = {},
+): Promise<string> {
   const db = getDb();
+  const today = options.today ?? todayIso();
   const cycle = await getActiveCycle(userId);
   if (!cycle) throw new NoActiveCycleError();
   const next = await getNextSession(cycle.id);
@@ -767,7 +787,7 @@ export async function advanceCycle(userId: string): Promise<string> {
     .map((row) => row.actualDate ?? row.plannedDate)
     .sort();
   const lastDate = completedDates.at(-1) ?? cycle.startDate;
-  const gapDays = daysBetween(lastDate, todayIso());
+  const gapDays = daysBetween(lastDate, today);
   const gapWeeks =
     gapDays === null ? null : Math.min(520, Math.floor(gapDays / 7));
   const breakWeeks = gapWeeks !== null && gapWeeks > 2 ? gapWeeks : null;
@@ -816,7 +836,7 @@ export async function advanceCycle(userId: string): Promise<string> {
         squat: primaryLoad("squat", "weight"),
         press: primaryLoad("press", "weight"),
       },
-    });
+    }, { today });
   } catch (error) {
     // Put the old cycle back if the new one could not be created.
     await db

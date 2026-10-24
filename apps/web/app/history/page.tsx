@@ -6,6 +6,43 @@ import { formatDateShort, formatWeight } from "@/src/lib/dates";
 
 export const metadata = { title: "История" };
 
+const AUDIT_LABELS: Record<string, string> = {
+  CYCLE_CREATED: "Цикл создан",
+  CYCLE_CLOSED: "Цикл закрыт",
+  CYCLE_REVIEWED: "Цикл пересмотрен",
+  CYCLE_REBUILT: "Цикл пересобран",
+  SESSION_STARTED: "Тренировка начата",
+  SESSION_COMPLETED: "Тренировка завершена",
+  SESSION_SKIPPED: "Тренировка пропущена",
+  SESSION_RESCHEDULED: "Тренировка перенесена",
+  PLAN_VERSION_CREATED: "Новая версия плана",
+  RECOMMENDATION_REJECTED: "Рекомендация отклонена",
+  RECOMMENDATION_ACCEPTED_NO_CHANGE: "Рекомендация принята",
+  SAFETY_ACKNOWLEDGED: "Сигнал безопасности подтверждён",
+  RETURN_PREPARED: "Подготовлено возвращение",
+};
+
+function auditDetail(event: {
+  eventType: string;
+  payload: unknown;
+}): string | null {
+  const payload = event.payload as
+    | { from?: unknown; to?: unknown; mode?: unknown; movedSessions?: unknown }
+    | null;
+  if (
+    event.eventType === "SESSION_RESCHEDULED" &&
+    typeof payload?.from === "string" &&
+    typeof payload?.to === "string"
+  ) {
+    const mode =
+      payload.mode === "SHIFT_TAIL"
+        ? ` · сдвиг хвоста (${String(payload.movedSessions ?? "")} сессий)`
+        : "";
+    return `${payload.from} → ${payload.to}${mode}`;
+  }
+  return null;
+}
+
 function Sparkline({ values }: { values: number[] }) {
   if (values.length === 0) return null;
   const width = 280;
@@ -231,19 +268,25 @@ export default async function HistoryPage() {
           <p className="small muted">Событий пока нет.</p>
         ) : (
           <div className="timeline">
-            {history.audit.map((event) => (
-              <div className="timeline-item" key={event.id}>
-                <div className="row-between wrap">
-                  <strong className="small">{event.eventType}</strong>
-                  <span className="tiny muted">
-                    {new Date(event.createdAt).toLocaleString("ru-RU")}
-                  </span>
+            {history.audit.map((event) => {
+              const detail = auditDetail(event);
+              return (
+                <div className="timeline-item" key={event.id}>
+                  <div className="row-between wrap">
+                    <strong className="small">
+                      {AUDIT_LABELS[event.eventType] ?? event.eventType}
+                    </strong>
+                    <span className="tiny muted">
+                      {new Date(event.createdAt).toLocaleString("ru-RU")}
+                    </span>
+                  </div>
+                  <p className="tiny muted" style={{ margin: "4px 0 0" }}>
+                    {detail ? `${detail} · ` : ""}
+                    {event.entity}
+                  </p>
                 </div>
-                <p className="tiny muted" style={{ margin: "4px 0 0" }}>
-                  {event.entity}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
