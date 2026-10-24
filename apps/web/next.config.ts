@@ -11,6 +11,31 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["postgres"],
   poweredByHeader: false,
   devIndicators: false,
+  async headers() {
+    const securityHeaders = [
+      { key: "x-content-type-options", value: "nosniff" },
+      {
+        key: "referrer-policy",
+        value: "strict-origin-when-cross-origin",
+      },
+      {
+        key: "permissions-policy",
+        value: "camera=(), microphone=(), geolocation=()",
+      },
+    ];
+    if (process.env.NODE_ENV === "production") {
+      securityHeaders.push({
+        key: "strict-transport-security",
+        value: "max-age=31536000; includeSubDomains",
+      });
+    }
+    return [
+      {
+        source: "/(.*)",
+        headers: securityHeaders,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

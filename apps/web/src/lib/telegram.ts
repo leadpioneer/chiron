@@ -1,4 +1,8 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  timingSafeEqual,
+} from "node:crypto";
 
 export interface TelegramUser {
   id: string;
@@ -86,4 +90,60 @@ export function verifyTelegramInitData(
   } catch {
     return { ok: false, user: null, reason: "Malformed user JSON" };
   }
+}
+
+export function verifyTelegramLogin(
+  params: Record<string, string>,
+  botToken: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): TelegramVerification {
+  if (!botToken) {
+    return { ok: false, user: null, reason: "TELEGRAM_BOT_TOKEN is not set" };
+  }
+
+  const hash = params.hash;
+  if (!hash) {
+    return { ok: false, user: null, reason: "Missing hash" };
+  }
+
+  const dataCheckString = Object.entries(params)
+    .filter(([key]) => key !== "hash")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+
+  const secret = createHash("sha256").update(botToken).digest();
+  const expected = createHmac("sha256", secret)
+    .update(dataCheckString)
+    .digest();
+  const provided = Buffer.from(hash, "hex");
+  if (
+    provided.length !== expected.length ||
+    !timingSafeEqual(provided, expected)
+  ) {
+    return { ok: false, user: null, reason: "Invalid hash" };
+  }
+
+  const authDate = Number(params.auth_date ?? "0");
+  if (!Number.isFinite(authDate) || nowSeconds - authDate > 86_400) {
+    return { ok: false, user: null, reason: "Stale login data" };
+  }
+
+  const id = params.id;
+  const firstName = params.first_name;
+  if (!id || !firstName) {
+    return { ok: false, user: null, reason: "Malformed user" };
+  }
+
+  return {
+    ok: true,
+    user: {
+      id,
+      firstName,
+      lastName: params.last_name ?? null,
+      username: params.username ?? null,
+      languageCode: params.language_code ?? null,
+    },
+    reason: null,
+  };
 }

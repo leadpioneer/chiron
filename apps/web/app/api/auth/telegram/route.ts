@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
 import { telegramAuthSchema } from "@chiron/contracts";
-import {
-  getDb,
-  identities,
-  users,
-} from "@chiron/db";
 import { createSession } from "@/src/lib/auth";
 import { apiError, readJson } from "@/src/lib/api";
+import {
+  telegramIpLimiter,
+  clientIp,
+  rateLimitResponse,
+} from "@/src/lib/security";
+import { authenticateTelegramUser } from "@/src/lib/telegram-auth";
 import { verifyTelegramInitData } from "@/src/lib/telegram";
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
+  const limit = telegramIpLimiter.check(`telegram:${clientIp(request)}`);
+  if (!limit.ok) return rateLimitResponse(limit);
+
   const parsed = await readJson(request, telegramAuthSchema);
   if (!parsed.ok) return parsed.response;
 
@@ -24,41 +27,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const db = getDb();
-  const identityRows = await db
-    .select()
-    .from(identities)
-    .where(
-      and(
-        eq(identities.provider, "telegram"),
-        eq(identities.providerUserId, verification.user.id),
-      ),
-    )
-    .limit(1);
-
-  let userId = identityRows[0]?.userId;
-  if (!userId) {
-    const displayName =
-      [verification.user.firstName, verification.user.lastName]
-        .filter(Boolean)
-        .join(" ") || "Атлет";
-    const userRows = await db
-      .insert(users)
-      .values({ displayName, locale: verification.user.languageCode ?? "ru" })
-      .returning();
-    const user = userRows[0];
-    if (!user) return apiError("USER_ERROR", "Не удалось создать пользователя", 500);
-    userId = user.id;
-    await db
-      .insert(identities)
-      .values({
-        userId,
-        provider: "telegram",
-        providerUserId: verification.user.id,
-      })
-      .onConflictDoNothing();
+  const outcome = await authenticateTelegramUser(verification.user);
+  if (!outcome.ok) {
+    return apiError(outcome.code, outcome.message, outcome.status);
   }
 
-  await createSession(userId);
-  return NextResponse.json({ ok: true });
+  await createSession(outcome.userId);
+  return NextResponse.json(
+    { ok: true },
+    { headers: { "cache-control": "no-store" } },
+  );
 }

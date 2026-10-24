@@ -1,30 +1,54 @@
 import { createHash, randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
+import { and, eq, isNull } from "drizzle-orm";
 import { loginRequestSchema } from "@chiron/contracts";
-import { getDb, magicLinks } from "@chiron/db";
+import {
+  cleanupOldMagicLinks,
+  getDb,
+  magicLinks,
+  users,
+} from "@chiron/db";
 import { apiError, readJson } from "@/src/lib/api";
+import {
+  authDevModeEnabled,
+  emailAllowedForSignup,
+  emailProvider,
+} from "@/src/lib/config";
+import { sendMagicLinkEmail } from "@/src/lib/email";
+import { magicLinkEmailLimit } from "@/src/lib/auth-rate-limit";
+import {
+  authIpLimiter,
+  clientIp,
+  rateLimitResponse,
+} from "@/src/lib/security";
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(request: Request): Promise<Response> {
   const parsed = await readJson(request, loginRequestSchema);
   if (!parsed.ok) return parsed.response;
 
-  const token = randomBytes(32).toString("base64url");
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-  const expiresAt = new Date(Date.now() + 15 * 60_000);
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const link = `${appUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
+  const ipLimit = authIpLimiter.check(`magic-link:${clientIp(request)}`);
+  if (!ipLimit.ok) return rateLimitResponse(ipLimit);
 
-  await getDb().insert(magicLinks).values({
-    email: parsed.data.email,
-    tokenHash,
-    expiresAt,
-  });
+  const email = parsed.data.email;
+  const emailLimit = await magicLinkEmailLimit(email);
+  if (!emailLimit.ok) return rateLimitResponse(emailLimit);
 
-  const devMode =
-    process.env.AUTH_DEV_MODE === "1" ||
-    process.env.NODE_ENV !== "production";
+  const existing = await getDb()
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.email, email), isNull(users.deletedAt)))
+    .limit(1);
+  if (!existing[0] && !emailAllowedForSignup(email)) {
+    return apiError(
+      "EMAIL_NOT_ALLOWED",
+      "Доступ по приглашению. Обратитесь к администратору.",
+      403,
+    );
+  }
 
-  if (!devMode && !process.env.EMAIL_WEBHOOK_URL) {
+  const devMode = authDevModeEnabled();
+  const provider = emailProvider();
+  if (!devMode && (provider === "none" || provider === "console")) {
     return apiError(
       "EMAIL_NOT_CONFIGURED",
       "Отправка почты не настроена. Обратитесь к администратору.",
@@ -32,28 +56,42 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  if (process.env.EMAIL_WEBHOOK_URL) {
-    try {
-      const emailResponse = await fetch(process.env.EMAIL_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ to: parsed.data.email, url: link }),
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!emailResponse.ok) throw new Error(`Email HTTP ${emailResponse.status}`);
-    } catch (error) {
-      console.error("Magic link email failed", error);
-      return apiError(
-        "EMAIL_FAILED",
-        "Не удалось отправить ссылку. Попробуйте ещё раз.",
-        502,
-      );
+  await cleanupOldMagicLinks();
+
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const link = `${appUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
+
+  const inserted = await getDb()
+    .insert(magicLinks)
+    .values({ email, tokenHash, expiresAt })
+    .returning({ id: magicLinks.id });
+  const magicLinkId = inserted[0]?.id;
+
+  const delivery = await sendMagicLinkEmail(email, link);
+  if (!delivery.ok) {
+    if (magicLinkId) {
+      await getDb().delete(magicLinks).where(eq(magicLinks.id, magicLinkId));
     }
+    return apiError(
+      delivery.code === "EMAIL_NOT_CONFIGURED"
+        ? "EMAIL_NOT_CONFIGURED"
+        : "EMAIL_FAILED",
+      delivery.code === "EMAIL_NOT_CONFIGURED"
+        ? "Отправка почты не настроена. Обратитесь к администратору."
+        : "Не удалось отправить ссылку. Попробуйте ещё раз.",
+      delivery.code === "EMAIL_NOT_CONFIGURED" ? 503 : 502,
+    );
   }
 
-  return NextResponse.json({
-    ok: true,
-    message: "Ссылка для входа создана.",
-    ...(devMode ? { devLink: link } : {}),
-  });
+  return NextResponse.json(
+    {
+      ok: true,
+      message: "Ссылка для входа создана.",
+      ...(devMode ? { devLink: link } : {}),
+    },
+    { headers: { "cache-control": "no-store" } },
+  );
 }

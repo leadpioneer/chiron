@@ -19,7 +19,9 @@
     "db:push": "npm run push --workspace @chiron/db",
     "db:seed": "npm run seed --workspace @chiron/db",
     "db:test:prepare": "node scripts/test-db.mjs",
+    "db:cleanup": "tsx scripts/cleanup.mts",
     "test:cycle": "npm run db:test:prepare && tsx scripts/cycle-sim.mts",
+    "test:llm-eval": "tsx scripts/llm-eval.mts",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

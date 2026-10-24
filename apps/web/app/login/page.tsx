@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/src/lib/auth";
+import { authDevModeEnabled } from "@/src/lib/config";
 import { LoginForm } from "@/src/components/LoginForm";
 
 export const metadata = { title: "Вход" };
@@ -12,9 +13,7 @@ export default async function LoginPage({
   const user = await getCurrentUser();
   if (user) redirect("/");
   const { error } = await searchParams;
-  const devMode =
-    process.env.AUTH_DEV_MODE === "1" ||
-    process.env.NODE_ENV !== "production";
+  const devMode = authDevModeEnabled();
 
   return (
     <div className="login">
@@ -29,11 +28,18 @@ export default async function LoginPage({
           изменение. Вы подтверждаете решение — приложение не меняет программу
           само.
         </p>
-        <LoginForm devMode={devMode} initialError={error} />
+        <LoginForm
+          devMode={devMode}
+          initialError={error}
+          telegramBotUsername={
+            process.env.TELEGRAM_BOT_USERNAME?.trim() || null
+          }
+        />
         <div className="divider" />
         <p className="tiny muted" style={{ margin: 0 }}>
+          Некоммерческий проект. Без рекламы, коммерческой аналитики и продажи
+          данных. Данные обрабатываются минимально для работы дневника.
           Wellness-инструмент. Не диагностирует и не заменяет врача или тренера.
-          Перед использованием примите политику обработки данных.
         </p>
       </section>
     </div>

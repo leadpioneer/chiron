@@ -7,6 +7,8 @@ coverage/
 .env
 .env.local
 .env.*.local
+.env.staging
+backups/
 .DS_Store
 .vscode/
 *.log

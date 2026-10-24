@@ -2,21 +2,15 @@ import { createHash } from "node:crypto";
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { LlmResponse } from "@chiron/contracts";
 import { llmResponseSchema } from "@chiron/contracts";
-import { parseWorkoutText } from "@chiron/core";
+import {
+  LLM_PROMPT_VERSION,
+  LLM_RULES_VERSION,
+  LLM_SCHEMA_VERSION,
+  LLM_SYSTEM_PROMPT,
+  parseWorkoutText,
+} from "@chiron/core";
 import { getDb, llmCalls } from "@chiron/db";
-
-const PROMPT_VERSION = "parse-v1";
-const SCHEMA_VERSION = "1.0";
-const RULES_VERSION = "1.0.0";
-
-const SYSTEM_PROMPT = `Ты — парсер дневника силовых тренировок. Твоя единственная задача — извлечь факты из текста пользователя и вернуть строгий JSON.
-Правила:
-- Не назначай нагрузки, не выбирай упражнения и не давай медицинских советов.
-- Не придумывай числа. Если значения нет, верни null.
-- Не меняй роли упражнений, связи и идентификаторы.
-- Если неоднозначно, задай короткий уточняющий вопрос в ambiguities.
-- Верни только JSON без markdown.
-Формат: {"schemaVersion":"1.0","parsedFacts":{"exerciseAlias":string|null,"exerciseVariantId":null,"targetBlockId":null,"role":null,"sets":[{"weightKg":number|null,"assistanceKg":number|null,"addedKg":number|null,"reps":number|null,"rir":number|null,"setType":"WORKING"|null,"sourceSpan":string|null}],"sleepHours":number|null,"symptoms":string[]},"missingFields":string[],"ambiguities":[{"field":string,"question":string}],"safetyObservations":[{"code":"GREEN"|"YELLOW_PAIN"|"YELLOW_SYSTEMIC"|"YELLOW_ILLNESS"|"RED","quote":string}],"selectedActionId":null,"explanation":string,"confidence":number}`;
+import { llmEnabled, llmModel } from "./config";
 
 interface ParseResult {
   response: LlmResponse;
@@ -28,7 +22,7 @@ interface ParseResult {
 }
 
 function estimateCost(text: string, output: string): number {
-  const inputTokens = Math.ceil((SYSTEM_PROMPT.length + text.length) / 4);
+  const inputTokens = Math.ceil((LLM_SYSTEM_PROMPT.length + text.length) / 4);
   const outputTokens = Math.ceil(output.length / 4);
   const inputRate = Number(process.env.LLM_INPUT_USD_PER_1M ?? "0.1");
   const outputRate = Number(process.env.LLM_OUTPUT_USD_PER_1M ?? "0.4");
@@ -72,9 +66,9 @@ async function recordCall(input: {
       purpose: "parse_workout_text",
       provider: input.result.provider,
       model: input.result.model,
-      promptVersion: PROMPT_VERSION,
-      schemaVersion: SCHEMA_VERSION,
-      rulesVersion: RULES_VERSION,
+      promptVersion: LLM_PROMPT_VERSION,
+      schemaVersion: LLM_SCHEMA_VERSION,
+      rulesVersion: LLM_RULES_VERSION,
       inputHash: hashInput(input.text),
       output: input.result.response,
       validation: input.result.validation,
@@ -86,11 +80,46 @@ async function recordCall(input: {
   }
 }
 
-async function budgetExceeded(userId: string): Promise<boolean> {
+interface BudgetState {
+  exceeded: boolean;
+  reason: "daily" | "monthly" | "global" | null;
+}
+
+function alertThreshold(): number {
+  const configured = Number(process.env.LLM_BUDGET_ALERT_RATIO ?? "0.8");
+  if (!Number.isFinite(configured) || configured <= 0 || configured >= 1) {
+    return 0.8;
+  }
+  return configured;
+}
+
+function warnBudget(
+  scope: "user_daily" | "user_monthly" | "global_monthly",
+  spent: number,
+  budget: number,
+): void {
+  if (budget <= 0) return;
+  const ratio = spent / budget;
+  if (ratio < alertThreshold() || ratio > 1.01) return;
+  console.warn(
+    JSON.stringify({
+      event: "llm_budget_alert",
+      scope,
+      ratio: Math.round(ratio * 100) / 100,
+      spentUsd: Math.round(spent * 1_000_000) / 1_000_000,
+      budgetUsd: budget,
+    }),
+  );
+}
+
+async function budgetState(userId: string): Promise<BudgetState> {
   try {
     const dailyBudget = Number(process.env.LLM_DAILY_BUDGET_USD ?? "0.02");
     const monthlyBudget = Number(
       process.env.LLM_MONTHLY_BUDGET_USD ?? "100",
+    );
+    const globalBudget = Number(
+      process.env.LLM_GLOBAL_MONTHLY_BUDGET_USD ?? "50",
     );
     const now = new Date();
     const dayStart = new Date(now);
@@ -119,13 +148,62 @@ async function budgetExceeded(userId: string): Promise<boolean> {
           gte(llmCalls.createdAt, monthStart),
         ),
       );
+    const globalRows = await db
+      .select({
+        total: sql<number>`coalesce(sum(${llmCalls.costUsd}), 0)`,
+      })
+      .from(llmCalls)
+      .where(gte(llmCalls.createdAt, monthStart));
+
     const daily = Number(dailyRows[0]?.total ?? 0);
     const monthly = Number(monthlyRows[0]?.total ?? 0);
-    return daily >= dailyBudget || monthly >= monthlyBudget;
+    const global = Number(globalRows[0]?.total ?? 0);
+    warnBudget("user_daily", daily, dailyBudget);
+    warnBudget("user_monthly", monthly, monthlyBudget);
+    warnBudget("global_monthly", global, globalBudget);
+
+    if (daily >= dailyBudget) {
+      return { exceeded: true, reason: "daily" };
+    }
+    if (monthly >= monthlyBudget) {
+      return { exceeded: true, reason: "monthly" };
+    }
+    if (global >= globalBudget) {
+      return { exceeded: true, reason: "global" };
+    }
+    return { exceeded: false, reason: null };
   } catch {
     // A budget check must never take down the deterministic fallback.
-    return false;
+    return { exceeded: false, reason: null };
   }
+}
+
+export function llmStatus(): {
+  enabled: boolean;
+  configured: boolean;
+  model: string;
+} {
+  return {
+    enabled: llmEnabled(),
+    configured: Boolean(process.env.GEMINI_API_KEY),
+    model: llmModel(),
+  };
+}
+
+function fallbackResult(
+  text: string,
+  provider: string,
+  validation: string,
+): ParseResult {
+  const started = Date.now();
+  return {
+    response: parseWorkoutText(text),
+    provider,
+    model: "deterministic-parser",
+    validation,
+    latencyMs: Date.now() - started,
+    costUsd: 0,
+  };
 }
 
 export async function parseTextForUser(
@@ -133,32 +211,29 @@ export async function parseTextForUser(
   text: string,
 ): Promise<LlmResponse> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.LLM_MODEL ?? "gemini-2.5-flash";
+  const model = llmModel();
 
-  if (!apiKey) {
-    const started = Date.now();
-    const result: ParseResult = {
-      response: parseWorkoutText(text),
-      provider: "local",
-      model: "deterministic-parser",
-      validation: "fallback",
-      latencyMs: Date.now() - started,
-      costUsd: 0,
-    };
+  if (!llmEnabled()) {
+    const result = fallbackResult(text, "disabled", "disabled_fallback");
     await recordCall({ userId, result, text });
     return result.response;
   }
 
-  if (await budgetExceeded(userId)) {
-    const started = Date.now();
-    const result: ParseResult = {
-      response: parseWorkoutText(text),
-      provider: "budget",
-      model: "deterministic-parser",
-      validation: "budget_fallback",
-      latencyMs: Date.now() - started,
-      costUsd: 0,
-    };
+  if (!apiKey) {
+    const result = fallbackResult(text, "local", "fallback");
+    await recordCall({ userId, result, text });
+    return result.response;
+  }
+
+  const budget = await budgetState(userId);
+  if (budget.exceeded) {
+    const result = fallbackResult(
+      text,
+      budget.reason === "global" ? "global_budget" : "budget",
+      budget.reason === "global"
+        ? "global_budget_fallback"
+        : "budget_fallback",
+    );
     await recordCall({ userId, result, text });
     return result.response;
   }
@@ -168,15 +243,7 @@ export async function parseTextForUser(
       text,
     )
   ) {
-    const started = Date.now();
-    const result: ParseResult = {
-      response: parseWorkoutText(text),
-      provider: "local",
-      model: "deterministic-parser",
-      validation: "injection_fallback",
-      latencyMs: Date.now() - started,
-      costUsd: 0,
-    };
+    const result = fallbackResult(text, "local", "injection_fallback");
     await recordCall({ userId, result, text });
     return result.response;
   }
@@ -191,7 +258,7 @@ export async function parseTextForUser(
         signal: AbortSignal.timeout(8000),
         body: JSON.stringify({
           systemInstruction: {
-            parts: [{ text: SYSTEM_PROMPT }],
+            parts: [{ text: LLM_SYSTEM_PROMPT }],
           },
           contents: [{ role: "user", parts: [{ text }] }],
           generationConfig: {

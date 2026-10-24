@@ -27,6 +27,9 @@ const serverEnv = {
   AUTH_SECRET: "e2e-secret-change-me-32-characters",
   APP_URL: baseURL,
   PORT: String(PORT),
+  TELEGRAM_BOT_TOKEN: "123456:e2e-telegram-token",
+  TELEGRAM_ALLOWLIST: "e2e_telegram,allowed_user,widget_user",
+  ALPHA_EMAIL_ALLOWLIST: "*@chiron.test",
 };
 
 export default defineConfig({

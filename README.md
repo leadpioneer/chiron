@@ -7,9 +7,34 @@ Wellness-инструмент: не диагностирует, не лечит 
 [`docs/decisions/v1-decisions.md`](docs/decisions/v1-decisions.md). Этот файл —
 краткая инструкция по запуску и карта реализации.
 
+## Статус проекта
+
+Chiron — некоммерческий личный проект: без платежей, подписок, рекламы,
+партнёрских программ, коммерческой аналитики и продажи данных. Alpha
+проводится только по приглашению.
+
+Цель проекта — тренировочный дневник, а не сбор персональных данных. Данные
+ограничены минимумом, без которого работают вход и дневник: идентификатор
+входа (email или Telegram id), профиль, тренировки, wellness и текст для
+LLM. Эти сведения относятся к персональным, поэтому проект не заявляет о
+«нулевой обработке ПД»: он минимизирует обработку, не использует её
+коммерчески и хранит только необходимое. Экспорт JSON и удаление аккаунта
+доступны.
+
+Если нужен буквальный zero-PD, требуется локальный контур без аккаунтов,
+сервера, LLM и серверных бэкапов. Это отдельное решение, а не настройка
+текущего V1: [`ADR-004`](docs/decisions/ADR-004-non-commercial-and-data-scope.md).
+
 ## Что уже работает
 
-- Вход по email magic link, Telegram Mini App `initData` и демо-вход для разработки.
+- Вход по email magic link, Telegram Mini App `initData`, Telegram Login Widget
+  и демо-вход для разработки.
+- Rate limit magic link и Telegram, CSRF-проверка Origin, ротация сессионной
+  cookie раз в 7 дней, allowlist Telegram, запрет `AUTH_DEV_MODE` в production.
+- Email-провайдер Resend или webhook; русский шаблон письма; ошибка доставки
+  удаляет неотправленную ссылку.
+- Telegram-виджет входа появляется только при заданном
+  `TELEGRAM_BOT_USERNAME`; allowlist ограничивает новых пользователей.
 - Один шаблон «Тяни / Толкай»: два самостоятельных основных движения в
   тренировке, необязательная подсобка, эстетика.
 - Онбординг: вес, рост, приблизительный процент жира, схема тренировок,
@@ -33,9 +58,14 @@ Wellness-инструмент: не диагностирует, не лечит 
 - Подтверждение, редактирование и отклонение рекомендации.
 - Copy-on-write версии плана, решения и audit.
 - Safety-гейты, red-флаги и пауза тренировочных рекомендаций.
-- Локальный парсер текста и опциональный LLM-парсер (Gemini) с fallback.
+- Локальный парсер текста и опциональный LLM-парсер (Gemini) с fallback,
+  kill switch `LLM_ENABLED=0`, per-user и глобальным бюджетом.
+- Golden dataset из 50 кейсов и `npm run test:llm-eval` с метриками red/yellow,
+  numeric accuracy, invalid JSON и scope.
 - История по упражнениям, экспорт JSON, удаление аккаунта.
 - PWA manifest и service worker; Telegram Mini App bootstrap.
+- Staging: `docker-compose.staging.yml`, Caddy TLS, healthcheck, backup/restore
+  скрипты и runbook.
 
 ## Стек
 
@@ -101,29 +131,47 @@ npm run dev
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `AUTH_SECRET` | ≥32 символа, подпись сессионной cookie |
-| `AUTH_DEV_MODE` | `1` — демо-вход и ссылка входа в ответе |
-| `APP_URL` | публичный URL для magic link |
-| `TELEGRAM_BOT_TOKEN` | проверка `initData` Mini App |
-| `GEMINI_API_KEY` | опциональный LLM-парсер; без ключа работает локальный |
-| `LLM_MODEL` | закреплённая модель, по умолчанию `gemini-2.5-flash` |
-| `LLM_DAILY_BUDGET_USD` / `LLM_MONTHLY_BUDGET_USD` | лимиты, после которых парсер переходит в локальный режим |
-| `LLM_INPUT_USD_PER_1M` / `LLM_OUTPUT_USD_PER_1M` | ставки для оценки стоимости вызова |
+| `AUTH_DEV_MODE` | `1` — демо-вход и ссылка входа в ответе; в production запрещён |
+| `APP_URL` | публичный URL для magic link; в production только `https` |
+| `ALLOWED_ORIGINS` | дополнительные origin для CSRF-проверки, через запятую |
+| `ALPHA_EMAIL_ALLOWLIST` | точные email или `*@domain`, которым разрешён вход; обязателен в production |
+| `TELEGRAM_BOT_TOKEN` | проверка `initData` Mini App и Login Widget |
+| `TELEGRAM_BOT_USERNAME` | username бота для Login Widget, без `@` |
+| `TELEGRAM_ALLOWLIST` | username/id, которым разрешена регистрация через Telegram |
+| `EMAIL_PROVIDER` | `resend`, `webhook`, `console` (dev) или `none` |
+| `RESEND_API_KEY` / `EMAIL_FROM` | ключ и отправитель Resend |
+| `EMAIL_REPLY_TO` / `EMAIL_APP_NAME` | необязательные reply-to и имя в письме |
 | `EMAIL_WEBHOOK_URL` | webhook `{to, url}` для отправки magic link |
+| `GEMINI_API_KEY` | опциональный LLM-парсер; без ключа работает локальный |
+| `LLM_ENABLED` | `0` — kill switch, всегда локальный парсер |
+| `LLM_MODEL` | закреплённая модель, по умолчанию `gemini-2.5-flash` |
+| `LLM_DAILY_BUDGET_USD` / `LLM_MONTHLY_BUDGET_USD` | лимиты пользователя |
+| `LLM_GLOBAL_MONTHLY_BUDGET_USD` | общий месячный лимит всех пользователей |
+| `LLM_BUDGET_ALERT_RATIO` | порог предупреждения о бюджете, по умолчанию `0.8` |
+| `LLM_INPUT_USD_PER_1M` / `LLM_OUTPUT_USD_PER_1M` | ставки для оценки стоимости вызова |
 
 ## Команды
 
 ```bash
-npm test               # 106 доменных тестов, включая golden-кейсы парсера
+npm test               # 136 доменных тестов, включая 50 golden-кейсов парсера
 npm run typecheck      # TypeScript во всех workspace
 npm run build          # production build Next.js
 npm run test:cycle     # полный симулятор 28 и 23 сессий на чистой test-БД
-npm run test:e2e       # Playwright: 22 сценария
+npm run test:e2e       # Playwright: 33 сценария
+npm run test:llm-eval  # метрики LLM на 50 golden-кейсах (локальный парсер)
 npm run db:test:prepare # создать/мигрировать/засеять chiron_test
+npm run db:cleanup     # удалить старые использованные magic links
 npm run db:dev         # локальный PostgreSQL + миграции + seed (без Docker)
 npm run db:generate    # сгенерировать SQL-миграцию
 npm run db:migrate     # применить миграции
 npm run db:seed        # каталог упражнений и шаблон
 npm run db:push        # синхронизировать схему без миграции (dev)
+```
+
+Живой LLM-eval включается явно и требует ключ:
+
+```bash
+LLM_EVAL_LIVE=1 GEMINI_API_KEY=... npm run test:llm-eval
 ```
 
 `test:cycle` и `test:e2e` работают только с `chiron_test`: скрипты проверяют
@@ -211,16 +259,35 @@ LLM не пишет план и не пишет в БД. Она разбирае
 Версии провайдера, модели, промпта, схемы и правил сохраняются в `llm_calls` и
 `audit_events`.
 
+Golden dataset — 50 кейсов. `npm run test:llm-eval` считает точность упражнения
+и подходов, numeric accuracy, red/yellow recall, invalid JSON и scope
+violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JSON
+≤0,5%, scope 100%. `LLM_ENABLED=0` — kill switch; при 80% любого бюджета в лог
+пишется `llm_budget_alert`, при 100% — локальный fallback.
+
 ## Безопасность и данные
 
 - Продукт не даёт диагнозов и не оценивает «безопасность» боли.
 - Red-флаги: боль в груди, обморок, выраженная одышка, неврологические
   симптомы, острая травма, лихорадка.
+- Проект некоммерческий: нет платежей, рекламы, продажи данных и коммерческой
+  аналитики.
 - Собираются только аккаунт, профиль, тренировки, wellness и текст для LLM.
+  Это персональные данные; они обрабатываются минимально и только для работы
+  дневника. Проект не заявляет о «нулевой обработке ПД» (см. ADR-004).
 - Сырой текст LLM — 90 дней, audit — 365 дней, логи — 30 дней.
 - Экспорт JSON и удаление аккаунта доступны в настройках.
-- Внешние сервисы: LLM (минимизированный контекст), email webhook, S3-бэкапы.
+- Внешние сервисы: LLM (минимизированный контекст), email-провайдер, S3-бэкапы.
 - Сторонняя аналитика и реклама не подключены.
+- Magic link: 15 минут, одно использование, в БД только SHA-256 хэш; не более
+  5 ссылок на email за 15 минут и не чаще одной в 30 секунд. Новые email
+  ограничены `ALPHA_EMAIL_ALLOWLIST`.
+- Сессия: httpOnly JWT, `SameSite=Lax`, 30 дней, ротация раз в 7 дней.
+- CSRF: небезопасные методы с чужим `Origin`/`Referer` получают `403`.
+- Удалённый аккаунт не восстанавливается magic link; email анонимизируется.
+  Повторный вход на тот же email создаёт новый аккаунт.
+- Production не стартует без `AUTH_SECRET` ≥32 символов, HTTPS `APP_URL` и
+  настроенного email-провайдера.
 
 ## Ограничения текущего среза
 
@@ -238,18 +305,25 @@ LLM не пишет план и не пишет в БД. Она разбирае
   калибровки.
 - Офлайн-очередь подходов не реализована; PWA кэширует оболочку и работает
   онлайн для записи.
-- Golden parser dataset: 20 эталонных текстовых кейсов; всего 106 тестов.
-  LLM-eval harness с живым провайдером — следующий шаг.
+- Golden parser dataset: 50 эталонных текстовых кейсов; всего 136 тестов.
+  Живой LLM-eval требует `GEMINI_API_KEY` и `LLM_EVAL_LIVE=1`.
 - Telegram и Gemini требуют внешних ключей; без них приложение работает в
   локальном/детерминированном режиме.
+- Связка Telegram с существующим Web-аккаунтом по короткому коду — P1-B.
+- IP rate limit хранится в памяти процесса; для нескольких инстансов нужен
+  общий store.
+- Staging compose, TLS и backup/restore подготовлены; живой прогон на сервере
+  с доменом и восстановление на staging — P1-B.
+- PWA и Telegram не проверены на реальных iOS Safari и Android Chrome.
 
 ## Проверки
 
-Приёмочный гейт P0:
+Приёмочный гейт P1-A:
 
 ```bash
 npm run typecheck
 npm test
+npm run test:llm-eval
 npm run build
 npm run test:cycle
 npm run test:e2e
@@ -257,6 +331,8 @@ npm run test:e2e
 
 Последний сквозной тестовый цикл: [`docs/testing/cycle-002-2026-10-24.md`](docs/testing/cycle-002-2026-10-24.md)
 (28/23 сессии, 106 доменных тестов, 22 Playwright-сценария, CI).
+P1-A: [`docs/testing/p1-alpha-readiness-2026-10-25.md`](docs/testing/p1-alpha-readiness-2026-10-25.md)
+(136 тестов, 50 golden-кейсов, 33 Playwright-сценария).
 Предыдущий цикл: [`docs/testing/cycle-001-2026-10-24.md`](docs/testing/cycle-001-2026-10-24.md).
 Технический отчёт сессии: [`docs/reports/technical-session-2026-10-24.md`](docs/reports/technical-session-2026-10-24.md).
 
@@ -266,7 +342,19 @@ npm run test:e2e
 
 ## Деплой
 
-`Dockerfile` собирает standalone-образ Next.js. `docker-compose.prod.yml`
-поднимает PostgreSQL и web. Перед публикацией задайте сильный `AUTH_SECRET`,
-`APP_URL`, `DATABASE_URL` и TLS-прокси (Caddy/Nginx). Для 152-ФЗ размещайте
-БД и приложение в РФ; LLM-вызовы требуют отдельного согласия.
+`Dockerfile` собирает standalone-образ Next.js. `docker-compose.prod.yml` —
+минимальный production-контур; `docker-compose.staging.yml` добавляет Caddy с
+автоматическим TLS, healthcheck, отдельную БД и backup-профиль. Пошаговая
+инструкция — [`docs/runbooks/staging.md`](docs/runbooks/staging.md).
+
+```bash
+cp .env.staging.example .env.staging
+docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+./scripts/backup-db.sh
+RESTORE_CONFIRM=YES ./scripts/restore-db.sh backups/chiron-<UTC>.dump
+```
+
+Перед публикацией задайте сильный `AUTH_SECRET`, HTTPS `APP_URL`, пароль БД и
+email-провайдера. Приложение не стартует при небезопасной production-конфигурации.
+Для 152-ФЗ размещайте БД и приложение в РФ; LLM-вызовы требуют отдельного
+согласия.

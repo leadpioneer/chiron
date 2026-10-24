@@ -110,6 +110,11 @@ export const telegramAuthSchema = z.object({
 });
 export type TelegramAuth = z.infer<typeof telegramAuthSchema>;
 
+export const telegramWidgetAuthSchema = z.object({
+  params: z.record(z.string(), z.string().max(1024)),
+});
+export type TelegramWidgetAuth = z.infer<typeof telegramWidgetAuthSchema>;
+
 export const startingLoadsSchema = z.object({
   verticalPull: z.number().min(0).max(500).nullable(),
   hinge: z.number().min(0).max(500).nullable(),

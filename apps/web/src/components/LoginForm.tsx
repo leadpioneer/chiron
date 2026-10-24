@@ -1,11 +1,13 @@
 ﻿"use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { TelegramLoginWidget } from "./TelegramLoginWidget";
 
 const ERRORS: Record<string, string> = {
   missing_token: "Ссылка неполная. Запросите новую.",
   expired_token: "Ссылка истекла. Запросите новую.",
   user: "Не удалось создать аккаунт. Попробуйте ещё раз.",
+  account_deleted: "Этот аккаунт удалён. Восстановление недоступно.",
 };
 
 declare global {
@@ -23,9 +25,11 @@ declare global {
 export function LoginForm({
   devMode,
   initialError,
+  telegramBotUsername,
 }: {
   devMode: boolean;
   initialError?: string;
+  telegramBotUsername: string | null;
 }) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(
@@ -119,7 +123,9 @@ export function LoginForm({
         >
           Войти через Telegram
         </button>
-      ) : null}
+      ) : (
+        <TelegramLoginWidget botUsername={telegramBotUsername} />
+      )}
 
       <form className="stack" onSubmit={requestLink}>
         <label className="field">

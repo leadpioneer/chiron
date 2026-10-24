@@ -3,12 +3,10 @@ import { eq } from "drizzle-orm";
 import { getDb, users } from "@chiron/db";
 import { createSession } from "@/src/lib/auth";
 import { apiError } from "@/src/lib/api";
+import { authDevModeEnabled } from "@/src/lib/config";
 
 export async function POST(): Promise<NextResponse> {
-  const devMode =
-    process.env.AUTH_DEV_MODE === "1" ||
-    process.env.NODE_ENV !== "production";
-  if (!devMode) {
+  if (!authDevModeEnabled()) {
     return apiError("NOT_FOUND", "Демо-вход отключён", 404);
   }
 

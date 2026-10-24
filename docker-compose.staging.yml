@@ -1,0 +1,109 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chiron}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.staging}
+      POSTGRES_DB: ${POSTGRES_DB:-chiron_staging}
+    volumes:
+      - chiron_staging_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-chiron} -d ${POSTGRES_DB:-chiron_staging}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  bootstrap:
+    build:
+      context: .
+      target: build
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env.staging
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-chiron}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-chiron_staging}
+    command: sh -c "npm run db:migrate && npm run db:seed"
+
+  web:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    env_file:
+      - .env.staging
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-chiron}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-chiron_staging}
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env.staging}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env.staging}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - chiron_caddy_data:/data
+      - chiron_caddy_config:/config
+
+  backup:
+    image: postgres:16-alpine
+    profiles: ["backup"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-chiron}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-chiron_staging}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mkdir -p /backups
+        stamp=$$(date -u +%Y%m%dT%H%M%SZ)
+        file="/backups/chiron-$$stamp.dump"
+        pg_dump --format=custom --no-owner --no-privileges --file="$$file" "$$DATABASE_URL"
+        find /backups -name 'chiron-*.dump' -mtime +$${BACKUP_RETENTION_DAYS} -delete
+        echo "backup written: $$file"
+
+volumes:
+  chiron_staging_pgdata:
+  chiron_caddy_data:
+  chiron_caddy_config:

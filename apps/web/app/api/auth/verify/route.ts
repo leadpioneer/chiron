@@ -1,59 +1,69 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
-import {
-  getDb,
-  identities,
-  magicLinks,
-  users,
-} from "@chiron/db";
+import { and, eq, gt, isNull } from "drizzle-orm";
+import { getDb, identities, magicLinks, users } from "@chiron/db";
 import { createSession } from "@/src/lib/auth";
+
+function loginError(request: Request, code: string): NextResponse {
+  return NextResponse.redirect(
+    new URL(`/login?error=${encodeURIComponent(code)}`, request.url),
+    { headers: { "cache-control": "no-store" } },
+  );
+}
 
 export async function GET(request: Request): Promise<NextResponse> {
   const token = new URL(request.url).searchParams.get("token");
-  if (!token) {
-    return NextResponse.redirect(new URL("/login?error=missing_token", request.url));
-  }
+  if (!token) return loginError(request, "missing_token");
 
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const db = getDb();
-  const rows = await db
-    .select()
-    .from(magicLinks)
+  const consumed = await db
+    .update(magicLinks)
+    .set({ usedAt: new Date() })
     .where(
       and(
         eq(magicLinks.tokenHash, tokenHash),
         isNull(magicLinks.usedAt),
+        gt(magicLinks.expiresAt, new Date()),
       ),
     )
+    .returning({ email: magicLinks.email });
+  const magic = consumed[0];
+  if (!magic) return loginError(request, "expired_token");
+
+  const existingRows = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, magic.email))
     .limit(1);
-  const magic = rows[0];
-  if (!magic || magic.expiresAt.getTime() < Date.now()) {
-    return NextResponse.redirect(
-      new URL("/login?error=expired_token", request.url),
-    );
+  let user = existingRows[0];
+
+  if (user?.deletedAt) {
+    return loginError(request, "account_deleted");
   }
 
-  await db
-    .update(magicLinks)
-    .set({ usedAt: new Date() })
-    .where(eq(magicLinks.id, magic.id));
-
-  const userRows = await db
-    .insert(users)
-    .values({
-      email: magic.email,
-      displayName: magic.email.split("@")[0] ?? "Атлет",
-      deletedAt: null,
-    })
-    .onConflictDoUpdate({
-      target: users.email,
-      set: { deletedAt: null },
-    })
-    .returning();
-  const user = userRows[0];
   if (!user) {
-    return NextResponse.redirect(new URL("/login?error=user", request.url));
+    const inserted = await db
+      .insert(users)
+      .values({
+        email: magic.email,
+        displayName: magic.email.split("@")[0] ?? "Атлет",
+      })
+      .onConflictDoNothing({ target: users.email })
+      .returning();
+    user = inserted[0];
+    if (!user) {
+      const raced = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, magic.email))
+        .limit(1);
+      user = raced[0];
+    }
+  }
+
+  if (!user || user.deletedAt) {
+    return loginError(request, "account_deleted");
   }
 
   await db
@@ -66,5 +76,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .onConflictDoNothing();
 
   await createSession(user.id);
-  return NextResponse.redirect(new URL("/", request.url));
+  return NextResponse.redirect(new URL("/", request.url), {
+    headers: { "cache-control": "no-store" },
+  });
 }
