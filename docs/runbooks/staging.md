@@ -6,6 +6,34 @@
 - **Связанные документы:** [`ADR-003`](../decisions/ADR-003-alpha-security-and-operations.md),
   [`P1-agent-brief`](../tasks/P1-agent-brief.md).
 
+## 0. Текущий alpha-контур (native)
+
+- **Код:** `/opt/chiron/app` (git `main`).
+- **Node:** `/opt/chiron/node` (Node 24).
+- **Env:** `/opt/chiron/.env.staging`, владелец `root:chiron`, режим `640`;
+  значения не публикуются.
+- **Сервис:** systemd `chiron`, слушает `127.0.0.1:3000`.
+- **БД:** PostgreSQL 17 на loopback; роль и база `chiron`.
+- **TLS/маршрутизация:** Nginx vhost за HAProxy SNI, сертификат Let's Encrypt
+  с автоматическим продлением.
+- **Noindex:** `robots.txt`, `X-Robots-Tag`, meta robots.
+- **Бэкапы:** `/opt/chiron/backup.sh`, cron ежедневно, retention 14 дней;
+  restore-drill выполнен в отдельную БД.
+
+Обновление:
+
+```bash
+sudo -u chiron git -C /opt/chiron/app pull --ff-only
+cd /opt/chiron/app
+sudo -u chiron env PATH=/opt/chiron/node/bin:/usr/bin:/bin HOME=/opt/chiron \
+  npm run build
+sudo systemctl restart chiron
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+Фактический домен, Telegram id и ключи хранятся только в серверном env и
+приватных заметках владельца. В репозиторий они не попадают.
+
 ## 1. Предусловия
 
 - VPS в РФ, Docker Engine 24+ и Compose v2.

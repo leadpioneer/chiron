@@ -64,6 +64,26 @@ Gemini-код остаётся в репозитории как альтерна
   те же метрики; гейт: red 100%, yellow ≥95%, numeric ≥98%, invalid JSON
   ≤0,5%, scope 100%.
 
+### 6. Результаты live eval
+
+Первый прогон выявил schema drift и расхождения LLM-меток safety. После
+нормализации алиасов, объединения safety с детерминированными правилами и
+одного retry:
+
+- exercise match 100%;
+- set count 96%;
+- numeric accuracy 99% (97/98);
+- pipeline red recall 100% (9/9), yellow 100% (10/10);
+- green false positives 0/31;
+- LLM-only safety mismatches 6/50 — диагностика, не гейт;
+- invalid JSON 0% после retry;
+- scope violations 0;
+- стоимость 50 кейсов ≈$0,88, один парсинг ≈$0,017.
+
+LLM-метки safety не могут понизить red: `/api/sessions/:id/parse` объединяет
+их с `assessSafety`. Это соответствует инварианту «safety outranks
+progression».
+
 ## Последствия
 
 - Смена модели или base URL — релизное решение, фиксируется новым ADR или

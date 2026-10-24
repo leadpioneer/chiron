@@ -67,8 +67,9 @@ LLM. Эти сведения относятся к персональным, п�
   numeric accuracy, invalid JSON и scope.
 - История по упражнениям, экспорт JSON, удаление аккаунта.
 - PWA manifest и service worker; Telegram Mini App bootstrap.
-- Staging: `docker-compose.staging.yml`, Caddy TLS, healthcheck, backup/restore
-  скрипты и runbook.
+- Staging: native Node/Postgres/Nginx/HAProxy контур с Let's Encrypt,
+  noindex, systemd, ежедневным `pg_dump` и проверенным restore-drill;
+  `docker-compose.staging.yml` остаётся альтернативой.
 
 ## Стек
 
@@ -151,6 +152,7 @@ npm run dev
 | `LLM_API_KEY` | ключ OpenAI-compatible провайдера; только серверный env |
 | `LLM_MODEL` | `~deepseek/deepseek-v4-flash-latest` для alpha |
 | `LLM_JSON_MODE` | `0` отключает `response_format=json_object` |
+| `LLM_REASONING_EFFORT` | `none` отключает reasoning у провайдера |
 | `GEMINI_API_KEY` | альтернативный Gemini-провайдер |
 | `LLM_DAILY_BUDGET_USD` / `LLM_MONTHLY_BUDGET_USD` | лимиты пользователя |
 | `LLM_GLOBAL_MONTHLY_BUDGET_USD` | общий месячный лимит всех пользователей |
@@ -160,7 +162,7 @@ npm run dev
 ## Команды
 
 ```bash
-npm test               # 140 доменных тестов, включая 50 golden-кейсов парсера
+npm test               # 142 доменных теста, включая 50 golden-кейсов парсера
 npm run typecheck      # TypeScript во всех workspace
 npm run build          # production build Next.js
 npm run test:cycle     # полный симулятор 28 и 23 сессий на чистой test-БД
@@ -316,15 +318,16 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
   калибровки.
 - Офлайн-очередь подходов не реализована; PWA кэширует оболочку и работает
   онлайн для записи.
-- Golden parser dataset: 50 эталонных текстовых кейсов; всего 140 тестов.
-  Живой LLM-eval требует ключ провайдера и `LLM_EVAL_LIVE=1`.
+- Golden parser dataset: 50 эталонных текстовых кейсов; всего 142 теста.
+  Живой LLM-eval прошёл на staging: numeric 99%, red/yellow 100%, invalid JSON
+  0% после retry.
 - Telegram и LLM требуют внешних ключей; без них приложение работает в
   локальном/детерминированном режиме.
 - Связка Telegram с существующим Web-аккаунтом по короткому коду — P1-B.
 - IP rate limit хранится в памяти процесса; для нескольких инстансов нужен
   общий store.
-- Staging compose, TLS и backup/restore подготовлены; живой прогон на сервере
-  с доменом и восстановление на staging — P1-B.
+- Live staging развёрнут; остались `/setdomain` для Login Widget и проверка на
+  реальных iOS Safari и Android Chrome.
 - PWA и Telegram не проверены на реальных iOS Safari и Android Chrome.
 
 ## Проверки
@@ -343,7 +346,7 @@ npm run test:e2e
 Последний сквозной тестовый цикл: [`docs/testing/cycle-002-2026-10-24.md`](docs/testing/cycle-002-2026-10-24.md)
 (28/23 сессии, 106 доменных тестов, 22 Playwright-сценария, CI).
 P1-A: [`docs/testing/p1-alpha-readiness-2026-10-25.md`](docs/testing/p1-alpha-readiness-2026-10-25.md)
-(140 тестов, 50 golden-кейсов, 33 Playwright-сценария).
+(142 теста, 50 golden-кейсов, 33 Playwright-сценария, live LLM eval и restore-drill).
 Предыдущий цикл: [`docs/testing/cycle-001-2026-10-24.md`](docs/testing/cycle-001-2026-10-24.md).
 Технический отчёт сессии: [`docs/reports/technical-session-2026-10-24.md`](docs/reports/technical-session-2026-10-24.md).
 
@@ -353,10 +356,16 @@ P1-A: [`docs/testing/p1-alpha-readiness-2026-10-25.md`](docs/testing/p1-alpha-re
 
 ## Деплой
 
+Текущий alpha-staging — native-контур: Node 24 + Next.js под systemd,
+PostgreSQL 17 на loopback, Nginx vhost за HAProxy SNI, Let's Encrypt,
+ежедневный `pg_dump` и restore-drill. Код, env и бэкапы — в `/opt/chiron`;
+подробности и команды обновления —
+[`docs/runbooks/staging.md`](docs/runbooks/staging.md).
+
 `Dockerfile` собирает standalone-образ Next.js. `docker-compose.prod.yml` —
 минимальный production-контур; `docker-compose.staging.yml` добавляет Caddy с
-автоматическим TLS, healthcheck, отдельную БД и backup-профиль. Пошаговая
-инструкция — [`docs/runbooks/staging.md`](docs/runbooks/staging.md).
+автоматическим TLS, healthcheck, отдельную БД и backup-профиль — альтернатива
+для будущего деплоя.
 
 ```bash
 cp .env.staging.example .env.staging
@@ -366,6 +375,6 @@ RESTORE_CONFIRM=YES ./scripts/restore-db.sh backups/chiron-<UTC>.dump
 ```
 
 Перед публикацией задайте сильный `AUTH_SECRET`, HTTPS `APP_URL`, пароль БД и
-email-провайдера. Приложение не стартует при небезопасной production-конфигурации.
-Для 152-ФЗ размещайте БД и приложение в РФ; LLM-вызовы требуют отдельного
-согласия.
+явное решение по email (провайдер или `EMAIL_PROVIDER=none`). Приложение не
+стартует при небезопасной production-конфигурации. Для 152-ФЗ размещайте БД и
+приложение в РФ; LLM-вызовы требуют отдельного согласия.

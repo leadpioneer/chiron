@@ -1,9 +1,10 @@
 # P1 — Alpha readiness: задание агенту
 
-- **Статус:** P1-A реализован 25.10.2026, CI на GitHub зелёный
-  ([run 40138587684](https://github.com/leadpioneer/chiron/actions/runs/40138587684));
-  живой staging и P1-B ждут внешних доступов. Отчёт:
-  [`p1-alpha-readiness`](../testing/p1-alpha-readiness-2026-10-25.md).
+- **Статус:** P1-A реализован и развёрнут на staging 25.10.2026; CI зелёный
+  ([run 40143095774](https://github.com/leadpioneer/chiron/actions/runs/40143095774)).
+  Живой LLM eval и restore-drill прошли. P1-B: реальные устройства,
+  `/setdomain`, связка Telegram/Web, юридические документы и мониторинг.
+  Отчёт: [`p1-alpha-readiness`](../testing/p1-alpha-readiness-2026-10-25.md).
 - **Владелец продукта:** автор проекта
 - **Обязательное чтение:** `AGENTS.md`, `docs/decisions/v1-decisions.md`,
   `docs/decisions/ADR-001-implementation-slice.md`,
@@ -25,7 +26,7 @@ P1-B требует решений и доступов владельца.
 |---|---|---|
 | P1-0 Handoff | P0 закоммичен; remote и CI на чистой БД | CI зелёный после push |
 | P1-1 Auth hardening | rate limit magic link и Telegram; alpha email allowlist; CSRF; ротация cookie; запрет `AUTH_DEV_MODE` в production; очистка magic links; политика удалённого аккаунта | 429 на повторный запрос; новый email вне allowlist → 403; cross-origin POST → 403; cookie обновляется; production-конфиг падает при небезопасных значениях |
-| P1-2 Telegram | allowlist по username/id, Login Widget, связка с Web-аккаунтом | тестер из allowlist входит; чужой — нет |
+| P1-2 Telegram | allowlist по username/id, Login Widget; связка с Web-аккаунтом отложена в P1-B | тестер из allowlist входит; чужой — нет |
 | P1-3 Email | провайдер Resend или webhook, русский шаблон, ошибки доставки, rate limit | письмо приходит; ошибка провайдера не создаёт «вечную» ссылку |
 | P1-4 LLM eval | 50 golden-кейсов, закреплённая модель, отчёт метрик, глобальный бюджет, kill switch | red recall 100%, yellow ≥95%, numeric ≥98%, invalid JSON ≤0,5%, scope 100% |
 | P1-5 Staging | отдельные БД и приложение, Caddy TLS, healthcheck, миграции/seed | staging по HTTPS, `/api/health` отвечает |
@@ -33,8 +34,9 @@ P1-B требует решений и доступов владельца.
 
 ## P1-B — допуск тестеров
 
-1. Реальный Telegram-бот, домен, проверка на iOS Safari и Android Chrome.
-2. Живой LLM с ключом, закреплённой моделью, согласием и бюджетом.
+1. BotFather `/setdomain` для Login Widget, проверка Mini App на iOS Safari
+   и Android Chrome, связка Telegram с Web-аккаунтом.
+2. Согласие на LLM, калибровка стоимости и качества на живых тестерах.
 3. Юридическое: подтвердить некоммерческий статус и границы данных по
    [`ADR-004`](../decisions/ADR-004-non-commercial-and-data-scope.md). Для
    текущего серверного контура — ToS, политика ПД, согласие на LLM, проверка

@@ -8,8 +8,10 @@
 [`ADR-003`](../decisions/ADR-003-alpha-security-and-operations.md); результаты —
 [`p1-alpha-readiness`](../testing/p1-alpha-readiness-2026-10-25.md). Репозиторий:
 [`leadpioneer/chiron`](https://github.com/leadpioneer/chiron), CI зелёный
-([run 40138587684](https://github.com/leadpioneer/chiron/actions/runs/40138587684)).
-Следующий шаг — P1-B: живые ключи, домен, устройства и юридические документы.
+([run 40143095774](https://github.com/leadpioneer/chiron/actions/runs/40143095774)).
+Живой staging, routerai и restore-drill проверены. Следующий шаг — P1-B:
+устройства, `/setdomain`, связка Telegram/Web, юридические документы и
+мониторинг.
 
 ## Сессия 1 — P0: перенос, возврат, пересмотр, полный цикл
 
@@ -37,7 +39,8 @@ ADR обновлены.
 
 ## Сессия 2 — Alpha readiness
 
-**Статус:** P1-A выполнена 25.10.2026; P1-B ждёт решений и доступов владельца.
+**Статус:** P1-A выполнена и развёрнута на staging 25.10.2026; P1-B ждёт
+решений и доступов владельца.
 
 **Сделано в P1-A:**
 
@@ -45,16 +48,16 @@ ADR обновлены.
   запрет `AUTH_DEV_MODE` в production, политика удалённого аккаунта;
 - email-провайдер Resend/webhook, русский шаблон, обработка ошибок доставки;
 - Telegram allowlist и Login Widget, связка с Web-аккаунтом отложена в P1-B;
-- 50 golden-кейсов, `npm run test:llm-eval`, глобальный бюджет и kill switch;
-- staging compose с Caddy TLS, healthcheck, backup/restore скрипты и runbook.
+- 50 golden-кейсов, локальный и живой `test:llm-eval`, routerai, retry,
+  глобальный бюджет и kill switch;
+- native staging с HTTPS, noindex, healthcheck, systemd, ежедневным бэкапом и
+  проверенным restore-drill.
 
 **Осталось в P1-B:**
 
-- реальный домен, TLS, VPS, живой staging и проверка восстановления бэкапа;
-- живой LLM-eval на закреплённой модели и ключ провайдера;
-- Telegram-бот, iOS/Android, связка Telegram с Web-аккаунтом;
+- BotFather `/setdomain`, реальные iOS/Android, связка Telegram с Web-аккаунтом;
 - юридические документы и согласия по ADR-004 (или пересборка на zero-PD),
-  метрики, алерты и поддержка.
+  alpha-метрики, внешние алерты и поддержка.
 
 **Цель:** допустить 3–5 тестеров на staging без публичной регистрации.
 

@@ -21,14 +21,17 @@ Chiron зафиксирован как некоммерческий проект
 | Проверка | Результат |
 |---|---|
 | `npm run typecheck` | pass: web, core, db |
-| `npm test` | 140/140, 12 файлов |
+| `npm test` | 142/142, 12 файлов |
 | `npm run test:llm-eval` | 50/50 кейсов, gate pass |
+| Live LLM eval (routerai) | gate pass: red 100%, yellow 100%, numeric 99%, invalid JSON 0% |
 | `npm run build` | pass, 27 маршрутов, Proxy (Middleware) |
 | `npm run test:cycle` | pass: 28 и 23 сессии |
 | `npm run test:e2e` | 33/33, Chromium |
 | Production-mode smoke | health 200, CSRF 403, invalid config exit 1 |
+| Native staging | HTTPS, health 200, TLS Let's Encrypt, noindex |
+| Backup/restore drill | pass: `pg_dump` + `pg_restore` в отдельную БД |
 | Compose staging | `docker compose config` pass |
-| GitHub Actions CI | success, [run 40138587684](https://github.com/leadpioneer/chiron/actions/runs/40138587684) |
+| GitHub Actions CI | success, [run 40143095774](https://github.com/leadpioneer/chiron/actions/runs/40143095774) |
 
 ## LLM-eval
 
@@ -46,8 +49,52 @@ Chiron зафиксирован как некоммерческий проект
 | Scope violations | 0 | 0 |
 | Cost | $0 | — |
 
-Живой прогон Gemini не выполнялся: нет ключа. Команда:
-`LLM_EVAL_LIVE=1 GEMINI_API_KEY=… npm run test:llm-eval`.
+Живой прогон на staging с routerai
+(`~deepseek/deepseek-v4-flash-latest`, `reasoning_effort=none`):
+
+| Метрика | Значение | Гейт |
+|---|---|---|
+| Exercise match | 100,0% | — |
+| Set count match | 96,0% | — |
+| Numeric accuracy | 99,0% (97/98) | ≥98% |
+| Red recall (pipeline) | 100,0% (9/9) | 100% |
+| Yellow recall (pipeline) | 100,0% (10/10) | ≥95% |
+| Green false positives | 0/31 | — |
+| LLM-only safety mismatches | 6 (диагностика) | — |
+| Invalid JSON | 0 (0,0%) после одного retry | ≤0,5% |
+| Scope violations | 0 | 0 |
+| Cost | $0,882 на 50 кейсов | — |
+
+Safety-гейт считается по объединению детерминированной оценки и LLM
+(`mergeSafetyAssessments`), как в `/api/sessions/:id/parse`. LLM-only метки
+не являются авторитетными: в живом прогоне они разошлись с ожиданием в 6
+кейсах, но детерминированные red-правила сохранили 100% recall. Один retry
+провайдера убирает schema-rejected ответы; при повторной ошибке используется
+локальный парсер.
+
+## Live staging
+
+Приватный alpha-контур развёрнут на сервере владельца. Адрес, IP, Telegram
+id и ключи не публикуются в репозитории.
+
+- **Runtime:** Node 24, Next.js 16, systemd `chiron`, PostgreSQL 17 на
+  локальном сокете, приложение слушает `127.0.0.1:3000`.
+- **TLS/маршрутизация:** Nginx vhost за HAProxy SNI, сертификат Let's Encrypt
+  с автоматическим продлением.
+- **Health:** `GET /api/health` → `200`, `db: up`, LLM provider `openai`.
+- **Индексация:** `/robots.txt` → `Disallow: /`; все ответы с
+  `X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex`;
+  страницы с meta robots.
+- **Telegram:** Mini App login для allowlisted владельца → `200`; посторонний
+  id → `403 TELEGRAM_NOT_ALLOWED`; тестовое сообщение доставлено только
+  владельцу. Второй allowlisted тестер не получал сообщений.
+- **LLM:** живой eval прошёл; один вызов парсинга через приложение записан в
+  `llm_calls` как `routerai`, `valid`, стоимость ≈$0,017.
+- **Backup:** ежедневный cron `pg_dump` + retention 14 дней; restore-drill в
+  отдельную БД прошёл, счётчики `users`, `exercises`, `training_cycles`,
+  `plan_versions`, `sessions`, `set_performances`, `audit_events` совпали.
+- **Email:** `EMAIL_PROVIDER=none`; форма email скрыта, magic link отвечает
+  `503`. Вход только через Telegram до подключения провайдера.
 
 ## Полный цикл
 
@@ -107,6 +154,8 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
   останавливают процесс.
 - Заголовки `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS в
   production, CSP `frame-ancestors` с разрешением Telegram Web.
+- `robots.txt`, `X-Robots-Tag` и meta robots закрывают alpha-домен от
+  индексации.
 - `npm run db:cleanup` удаляет старые использованные/истёкшие magic links.
 
 ### Email
@@ -114,7 +163,8 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
 - Провайдеры `resend`, `webhook`, `console` (dev), `none`.
 - Русский текст и HTML-шаблон, кнопка и fallback-ссылка.
 - Таймаут 8 секунд; ошибка доставки удаляет созданную ссылку.
-- В production `console`/`none` запрещены.
+- В production `console` запрещён; явный `none` разрешён для Telegram-only
+  alpha, скрывает email-форму и возвращает `503` из `request-link`.
 
 ### Telegram
 
@@ -128,6 +178,12 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
 
 - 50 golden-кейсов вместо 20.
 - `npm run test:llm-eval` считает exercise/sets/numeric/safety/invalid JSON/scope.
+- Активный провайдер routerai (OpenAI-compatible), модель
+  `~deepseek/deepseek-v4-flash-latest`, `reasoning_effort=none`.
+- Один retry при JSON/schema-ошибке; затем локальный парсер.
+- Стоимость берётся из `usage.cost` провайдера, иначе — из ставок env.
+- Safety-гейт — объединение детерминированной оценки и LLM-наблюдений;
+  LLM-метки не могут понизить red.
 - Глобальный месячный бюджет `LLM_GLOBAL_MONTHLY_BUDGET_USD`.
 - Алерт при 80% любого бюджета, fallback при 100%.
 - `LLM_ENABLED=0` — kill switch.
@@ -136,8 +192,10 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
 
 ### Staging и бэкапы
 
+- Текущий alpha: native Node/Next + PostgreSQL 17 + Nginx/HAProxy, systemd,
+  Let's Encrypt, `/opt/chiron` (код, env, бэкапы).
 - `docker-compose.staging.yml`: отдельная БД, bootstrap, web healthcheck,
-  Caddy TLS, backup-профиль.
+  Caddy TLS, backup-профиль — альтернативный контур для будущего деплоя.
 - `deploy/Caddyfile`: HTTPS, HSTS, JSON-логи.
 - `scripts/backup-db.sh`: `pg_dump`, retention, опциональный rclone.
 - `scripts/restore-db.sh`: защита `RESTORE_CONFIRM=YES`, запрет production без
@@ -153,25 +211,30 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
    Теперь один `UPDATE … RETURNING`.
 3. **Неотправленная ссылка оставалась валидной.** При ошибке email созданная
    запись удаляется.
-4. **Production мог молча не отправлять письма.** `console`/`none` теперь
-   запрещены при старте и возвращают `503` в запросе.
+4. **Production мог молча не отправлять письма.** `console` запрещён при
+   старте; явный `none` скрывает email-форму и возвращает `503`.
 5. **Telegram widget зависел от build-time env.** `NEXT_PUBLIC_*` заменён на
    runtime-проп из server component.
 6. **Небезопасный production-конфиг не останавливал процесс.** Добавлена
    валидация в instrumentation; процесс завершается с кодом 1.
+7. **Schema drift провайдера.** DeepSeek иногда дублирует ключи или теряет
+   `missingFields`. Добавлен один retry; при повторной ошибке — локальный
+   парсер. Живой прогон: 0 invalid JSON.
+8. **LLM safety-метки ненадёжны.** 6/50 расхождений в живом прогоне;
+   `/api/sessions/:id/parse` объединяет их с детерминированными red-правилами,
+   поэтому pipeline red recall 100%.
 
 ## Не выполнено в P1-A
 
-- Docker daemon не запущен: staging-контейнеры, Caddy TLS и restore-drill не
-  прогнаны на живой БД. Compose-конфиг валиден.
-- Живой staging с доменом, TLS и restore-drill не развёрнут.
-- Нет live LLM-ключа: живой eval и калибровка модели не выполнены.
-- Нет Telegram bot token/username и реальных устройств.
-- Связка Telegram с Web-аккаунтом, юридические документы, РКН/DPIA,
-  alpha-метрики, алерты и поддержка — P1-B.
+- Login Widget в браузере требует `/setdomain` в BotFather; Mini App через
+  кнопку меню уже работает.
+- Нет проверки на реальных iOS Safari и Android Chrome.
+- Связка Telegram с Web-аккаунтом по коду, юридические документы, РКН/DPIA,
+  alpha-метрики, внешние алерты и поддержка — P1-B.
 - IP rate limit хранится в памяти процесса; для нескольких инстансов нужен
   общий store.
-- PWA и Telegram не проверены на iOS Safari и Android Chrome.
+- Docker-контур staging не запускался (Docker daemon отсутствует); текущий
+  staging использует native Node/Postgres/Nginx и проверен.
 
 ## Риски
 
@@ -179,11 +242,18 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
   задаётся в `auth-rate-limit.ts` и должен проверяться на alpha.
 - CSRF допускает запросы без `Origin`/`Referer` для серверных клиентов; защита
   опирается также на `SameSite=Lax`.
-- При отключённом LLM качество парсинга ниже; это осознанный fallback.
-- Восстановление бэкапа на staging остаётся обязательным до допуска тестеров.
+- LLM-only safety-метки расходятся с ожиданием в 6/50 кейсов; pipeline
+  защищён детерминированными правилами, но LLM нельзя делать единственным
+  источником safety-решения.
+- Стоимость живого eval ≈$0,88; один парсинг ≈$0,017. Бюджеты: $0,5/день,
+  $10/месяц на пользователя, $20/месяц глобально.
+- Email-вход на текущем staging отключён; до подключения провайдера тестеры
+  входят только через Telegram.
+- IP-ограничение LLM-ключа привязано к staging-серверу; локальные вызовы
+  могут получать `403`.
 
 ## Следующий шаг
 
-P1-B: remote и CI, домен/VPS/TLS, живой LLM, Telegram-бот и устройства,
-юридические документы, allowlist-инвайты, мониторинг и учебное восстановление
-бэкапа.
+P1-B: `/setdomain` для Login Widget, реальные iOS/Android, связка Telegram с
+Web-аккаунтом, юридические документы, alpha-метрики, внешний мониторинг и
+алерты, поддержка и инциденты.
