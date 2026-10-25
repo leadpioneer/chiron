@@ -24,6 +24,7 @@ export async function POST(
       sessionId: id,
       sessionRpe: parsed.data.sessionRpe,
       comment: parsed.data.comment ?? null,
+      actualDate: parsed.data.actualDate,
     });
     return NextResponse.json({
       ok: true,

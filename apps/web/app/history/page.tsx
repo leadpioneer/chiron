@@ -15,6 +15,9 @@ const AUDIT_LABELS: Record<string, string> = {
   SESSION_COMPLETED: "Тренировка завершена",
   SESSION_SKIPPED: "Тренировка пропущена",
   SESSION_RESCHEDULED: "Тренировка перенесена",
+  SESSION_RESCHEDULE_UNDONE: "Перенос отменён",
+  SESSION_REOPENED: "Тренировка возвращена в работу",
+  SET_DELETED: "Подход удалён",
   PLAN_VERSION_CREATED: "Новая версия плана",
   RECOMMENDATION_REJECTED: "Рекомендация отклонена",
   RECOMMENDATION_ACCEPTED_NO_CHANGE: "Рекомендация принята",
@@ -30,7 +33,8 @@ function auditDetail(event: {
     | { from?: unknown; to?: unknown; mode?: unknown; movedSessions?: unknown }
     | null;
   if (
-    event.eventType === "SESSION_RESCHEDULED" &&
+    (event.eventType === "SESSION_RESCHEDULED" ||
+      event.eventType === "SESSION_RESCHEDULE_UNDONE") &&
     typeof payload?.from === "string" &&
     typeof payload?.to === "string"
   ) {

@@ -21,6 +21,8 @@ import { StartSessionButton } from "@/src/components/StartSessionButton";
 import { StartNextCycleButton } from "@/src/components/StartNextCycleButton";
 import { SkipSessionButton } from "@/src/components/SkipSessionButton";
 import { RescheduleSessionButton } from "@/src/components/RescheduleSessionButton";
+import { UndoRescheduleButton } from "@/src/components/UndoRescheduleButton";
+import { getLatestReschedule } from "@/src/lib/reschedule-service";
 import { ReturnCard } from "@/src/components/ReturnCard";
 import { CycleReviewCard } from "@/src/components/CycleReviewCard";
 import { WeeklyCheck } from "@/src/components/WeeklyCheck";
@@ -51,20 +53,22 @@ export default async function TodayPage() {
   const cycle = await getActiveCycle(user.id);
   if (!cycle) redirect("/onboarding");
 
-  const [nextSession, template, pending, wellnessRows] = await Promise.all([
-    getNextSession(cycle.id),
-    getTemplateForCycle(cycle.templateId),
-    getPendingRecommendations(user.id),
-    getDb()
-      .select({
-        recordedAt: wellnessChecks.recordedAt,
-        createdAt: wellnessChecks.createdAt,
-      })
-      .from(wellnessChecks)
-      .where(eq(wellnessChecks.userId, user.id))
-      .orderBy(desc(wellnessChecks.createdAt))
-      .limit(1),
-  ]);
+  const [nextSession, template, pending, wellnessRows, latestReschedule] =
+    await Promise.all([
+      getNextSession(cycle.id),
+      getTemplateForCycle(cycle.templateId),
+      getPendingRecommendations(user.id),
+      getDb()
+        .select({
+          recordedAt: wellnessChecks.recordedAt,
+          createdAt: wellnessChecks.createdAt,
+        })
+        .from(wellnessChecks)
+        .where(eq(wellnessChecks.userId, user.id))
+        .orderBy(desc(wellnessChecks.createdAt))
+        .limit(1),
+      getLatestReschedule(user.id, cycle.id),
+    ]);
   const lastWellness = wellnessRows[0];
   const wellnessGap = lastWellness
     ? daysBetween(lastWellness.recordedAt, todayIso())
@@ -154,6 +158,27 @@ export default async function TodayPage() {
         {formatDate(nextSession.plannedDate)} · цикл{" "}
         {template?.name ?? "Тяни / Толкай"}.
       </p>
+
+      {latestReschedule ? (
+        <div className="notice" style={{ marginBottom: 14 }}>
+          <div className="row-between wrap">
+            <div>
+              <strong>Последний перенос можно отменить.</strong> Тренировка
+              перенесена с {formatDate(latestReschedule.from)} на{" "}
+              {formatDate(latestReschedule.to)}
+              {latestReschedule.mode === "SHIFT_TAIL"
+                ? ` · сдвинуто ${latestReschedule.movedSessions} сессий`
+                : ""}
+              .
+            </div>
+            <UndoRescheduleButton
+              sessionId={latestReschedule.sessionId}
+              from={latestReschedule.from}
+              to={latestReschedule.to}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {nextSession.plannedDate < todayIso() ? (
         <div className="notice" style={{ marginBottom: 14 }}>

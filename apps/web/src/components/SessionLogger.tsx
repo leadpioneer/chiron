@@ -11,6 +11,7 @@ import type {
 import { RED_FLAG_TEXT } from "@chiron/core";
 import { formatDate, formatRange, formatWeight } from "@/src/lib/dates";
 import { ReplaceExerciseButton } from "./ReplaceExerciseButton";
+import { ReopenSessionButton } from "./ReopenSessionButton";
 
 interface LastSet {
   weightKg: number | null;
@@ -76,10 +77,13 @@ interface ClientBlock {
 }
 
 interface ClientView {
+  today: string;
+  cycleStartDate: string;
   session: {
     id: string;
     sessionKey: string;
     plannedDate: string;
+    actualDate: string | null;
     status: string;
     isReturn: boolean;
   };
@@ -210,6 +214,13 @@ export function SessionLogger({ view }: { view: ClientView }) {
   const [completeOpen, setCompleteOpen] = useState(false);
   const [sessionRpe, setSessionRpe] = useState("MODERATE");
   const [comment, setComment] = useState("");
+  const [actualDate, setActualDate] = useState(
+    () =>
+      view.session.actualDate ??
+      (view.session.plannedDate < view.today
+        ? view.session.plannedDate
+        : view.today),
+  );
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [quickText, setQuickText] = useState("");
@@ -334,8 +345,41 @@ export function SessionLogger({ view }: { view: ClientView }) {
     }
   }
 
-  async function saveWellness() {
-    setWellnessState(null);
+  async function removeSet(
+    prescription: ClientPrescription,
+    index: number,
+  ) {
+    const row = rows[prescription.id]?.[index];
+    if (!row || !row.saved) return;
+    if (!window.confirm("Удалить сохранённый подход?")) return;
+    patchRow(prescription.id, index, { saving: true, error: null });
+    try {
+      const response = await fetch(
+        `/api/sessions/${view.session.id}/sets?clientSetId=${encodeURIComponent(row.clientSetId)}`,
+        { method: "DELETE" },
+      );
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        patchRow(prescription.id, index, {
+          saving: false,
+          error: payload.error ?? "Не удалось удалить подход.",
+        });
+        return;
+      }
+      patchRow(prescription.id, index, {
+        saving: false,
+        saved: false,
+        error: null,
+      });
+    } catch {
+      patchRow(prescription.id, index, {
+        saving: false,
+        error: "Сеть недоступна.",
+      });
+    }
+  }
+
+  async function saveWellness() {    setWellnessState(null);
     try {
       const response = await fetch(
         `/api/sessions/${view.session.id}/wellness`,
@@ -478,6 +522,7 @@ export function SessionLogger({ view }: { view: ClientView }) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             sessionRpe,
+            actualDate,
             comment: combinedComment === "" ? null : combinedComment,
           }),
         },
@@ -536,8 +581,11 @@ export function SessionLogger({ view }: { view: ClientView }) {
             <span className="badge badge-primary">Возвращение</span>
           ) : null}
           <p className="subtitle" style={{ marginBottom: 0 }}>
-            {formatDate(view.session.plannedDate)} · сохранено подходов:{" "}
-            {savedCount}
+            {formatDate(view.session.plannedDate)}
+            {view.session.actualDate
+              ? ` · факт ${formatDate(view.session.actualDate)}`
+              : ""}{" "}
+            · сохранено подходов: {savedCount}
             {readOnly ? " · завершена" : ""}
           </p>
         </div>
@@ -556,8 +604,13 @@ export function SessionLogger({ view }: { view: ClientView }) {
 
       {readOnly ? (
         <div className="notice" style={{ marginBottom: 14 }}>
-          Тренировка уже завершена. Изменения подходов и новая рекомендация не
-          создаются.
+          <div className="row-between wrap">
+            <div>
+              Тренировка уже завершена. Изменения подходов и новая рекомендация
+              не создаются.
+            </div>
+            <ReopenSessionButton sessionId={view.session.id} />
+          </div>
         </div>
       ) : null}
 
@@ -991,6 +1044,16 @@ export function SessionLogger({ view }: { view: ClientView }) {
                         >
                           боль
                         </button>
+                        {row.saved && !readOnly ? (
+                          <button
+                            type="button"
+                            className="mini-toggle"
+                            onClick={() => removeSet(prescription, index)}
+                            disabled={row.saving}
+                          >
+                            удалить
+                          </button>
+                        ) : null}
                       </div>
                       {row.error ? (
                         <span
@@ -1101,6 +1164,21 @@ export function SessionLogger({ view }: { view: ClientView }) {
               ))}
             </div>
             <label className="field" style={{ marginTop: 14 }}>
+              <span className="label">Дата тренировки</span>
+              <input
+                className="input"
+                type="date"
+                min={view.cycleStartDate}
+                max={view.today}
+                value={actualDate}
+                onChange={(event) => setActualDate(event.target.value)}
+              />
+              <span className="tiny muted">
+                По умолчанию — плановая дата для просроченной тренировки или
+                сегодня. Измените, если записываете задним числом.
+              </span>
+            </label>
+            <label className="field" style={{ marginTop: 14 }}>
               <span className="label">Комментарий</span>
               <textarea
                 className="textarea"
@@ -1128,7 +1206,7 @@ export function SessionLogger({ view }: { view: ClientView }) {
                 className="btn btn-primary"
                 type="button"
                 onClick={completeSession}
-                disabled={completing}
+                disabled={completing || actualDate === ""}
               >
                 {completing ? "Завершаю…" : "Завершить и получить предложения"}
               </button>

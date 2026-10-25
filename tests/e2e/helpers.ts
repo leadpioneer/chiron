@@ -290,6 +290,7 @@ export async function saveSetsAndComplete(
     rir?: number;
     sessionRpe?: SessionRpe;
     comment?: string | null;
+    actualDate?: string;
     load?: (prescription: PrescriptionRow) => {
       weightKg?: number | null;
       assistanceKg?: number | null;
@@ -340,6 +341,7 @@ export async function saveSetsAndComplete(
       data: {
         sessionRpe: options.sessionRpe ?? "MODERATE",
         comment: options.comment ?? null,
+        actualDate: options.actualDate,
       },
     },
   );

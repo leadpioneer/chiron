@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import type { LoadMode } from "@chiron/contracts";
 import { getCurrentUser } from "@/src/lib/auth";
 import { getSessionView } from "@/src/lib/plan-service";
+import { todayIso } from "@/src/lib/dates";
 import { SessionLogger } from "@/src/components/SessionLogger";
 
 export const metadata = { title: "Тренировка" };
@@ -18,10 +19,13 @@ export default async function SessionPage({
   if (!view) notFound();
 
   const clientView = {
+    today: todayIso(),
+    cycleStartDate: view.cycle.startDate,
     session: {
       id: view.session.id,
       sessionKey: view.session.sessionKey,
       plannedDate: view.session.plannedDate,
+      actualDate: view.session.actualDate,
       status: view.session.status,
       isReturn: view.session.isReturn,
     },

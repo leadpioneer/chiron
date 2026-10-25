@@ -151,6 +151,17 @@ export const onboardingSchema = z.object({
 });
 export type OnboardingInput = z.infer<typeof onboardingSchema>;
 
+export const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return (
+      Number.isFinite(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    );
+  }, "Некорректная дата");
+
 export const setPerformanceSchema = z.object({
   clientSetId: z.string().uuid(),
   prescriptionId: z.string().uuid(),
@@ -170,6 +181,7 @@ export type SetPerformanceInput = z.infer<typeof setPerformanceSchema>;
 export const completeSessionSchema = z.object({
   sessionRpe: sessionRpeSchema,
   comment: z.string().max(1000).nullable().optional(),
+  actualDate: isoDateSchema.optional(),
 });
 export type CompleteSessionInput = z.infer<typeof completeSessionSchema>;
 
@@ -222,17 +234,6 @@ export const skipSessionSchema = z.object({
   comment: z.string().max(500).nullable().optional(),
 });
 export type SkipSessionInput = z.infer<typeof skipSessionSchema>;
-
-export const isoDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00.000Z`);
-    return (
-      Number.isFinite(date.getTime()) &&
-      date.toISOString().slice(0, 10) === value
-    );
-  }, "Некорректная дата");
 
 export const rescheduleModeSchema = z.enum(["SINGLE", "SHIFT_TAIL"]);
 export type RescheduleMode = z.infer<typeof rescheduleModeSchema>;

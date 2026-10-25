@@ -261,6 +261,7 @@ export async function createSessionRecommendations(
     sessionId: string;
     sessionRpe: SessionRpe;
     comment: string | null;
+    actualDate?: string;
   },
   options: { today?: string } = {},
 ): Promise<RecommendationView[]> {
@@ -308,9 +309,23 @@ export async function createSessionRecommendations(
     );
   }
 
+  const actualDate = input.actualDate ?? today;
+  if (actualDate > today) {
+    throw new RecommendationError(
+      "DATE_IN_FUTURE",
+      "Дата тренировки не может быть в будущем",
+    );
+  }
+  if (actualDate < sessionRow.cycle.startDate) {
+    throw new RecommendationError(
+      "DATE_BEFORE_CYCLE",
+      "Дата тренировки не может быть раньше начала цикла",
+    );
+  }
+
   await db
     .update(sessions)
-    .set({ status: "COMPLETED", actualDate: today })
+    .set({ status: "COMPLETED", actualDate })
     .where(eq(sessions.id, input.sessionId));
 
   await db
@@ -479,6 +494,7 @@ export async function createSessionRecommendations(
       eventType: "SESSION_COMPLETED",
       payload: {
         sessionRpe: input.sessionRpe,
+        actualDate,
         recommendations: rows.map((row) => row.id),
       },
       versions: { rules: "1.0.0", prompt: "rules-only" },

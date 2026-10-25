@@ -1,8 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import type { SetPerformanceInput, WellnessInput } from "@chiron/contracts";
 import {
   auditEvents,
   getDb,
+  recommendations,
+  safetyEvents,
   sessions,
   setPerformances,
   wellnessChecks,
@@ -91,6 +93,130 @@ export async function startSession(
   }
 }
 
+export async function reopenSession(
+  userId: string,
+  sessionId: string,
+): Promise<void> {
+  const view = await getSessionView(sessionId, userId);
+  if (!view) {
+    throw new SessionError("NOT_FOUND", "Тренировка не найдена", 404);
+  }
+  ensureActiveCycle(view);
+  if (view.session.status !== "COMPLETED") {
+    throw new SessionError(
+      "NOT_COMPLETED",
+      "Вернуть в работу можно только завершённую тренировку",
+      409,
+    );
+  }
+
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        id: sessions.id,
+        cycleId: sessions.cycleId,
+        sessionIndex: sessions.sessionIndex,
+        actualDate: sessions.actualDate,
+        status: sessions.status,
+      })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+      .for("update");
+    const session = rows[0];
+    if (!session) {
+      throw new SessionError("NOT_FOUND", "Тренировка не найдена", 404);
+    }
+    if (session.status !== "COMPLETED") {
+      throw new SessionError(
+        "NOT_COMPLETED",
+        "Тренировка уже не завершена",
+        409,
+      );
+    }
+
+    const later = await tx
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.cycleId, session.cycleId),
+          gt(sessions.sessionIndex, session.sessionIndex),
+          inArray(sessions.status, ["COMPLETED", "IN_PROGRESS"]),
+        ),
+      )
+      .limit(1);
+    if (later.length > 0) {
+      throw new SessionError(
+        "LATER_SESSION_EXISTS",
+        "Нельзя исправить: после этой тренировки уже начата или завершена следующая",
+        409,
+      );
+    }
+
+    const safety = await tx
+      .select({ id: safetyEvents.id })
+      .from(safetyEvents)
+      .where(eq(safetyEvents.sessionId, sessionId))
+      .limit(1);
+    if (safety.length > 0) {
+      throw new SessionError(
+        "SAFETY_EVENT_EXISTS",
+        "Нельзя исправить: по тренировке есть сигнал безопасности. Нужен пересмотр цикла.",
+        409,
+      );
+    }
+
+    const recs = await tx
+      .select({ id: recommendations.id, status: recommendations.status })
+      .from(recommendations)
+      .where(eq(recommendations.sessionId, sessionId));
+    const decided = recs.some(
+      (row) =>
+        row.status !== "PENDING" &&
+        row.status !== "EXPIRED" &&
+        row.status !== "SUPERSEDED",
+    );
+    if (decided) {
+      throw new SessionError(
+        "DECISION_EXISTS",
+        "Нельзя исправить: по тренировке уже принято решение. Изменения — через пересмотр цикла.",
+        409,
+      );
+    }
+
+    const superseded = recs.filter((row) => row.status === "PENDING").length;
+    if (superseded > 0) {
+      await tx
+        .update(recommendations)
+        .set({ status: "SUPERSEDED" })
+        .where(
+          and(
+            eq(recommendations.sessionId, sessionId),
+            eq(recommendations.status, "PENDING"),
+          ),
+        );
+    }
+
+    await tx
+      .update(sessions)
+      .set({ status: "IN_PROGRESS" })
+      .where(eq(sessions.id, sessionId));
+
+    await tx.insert(auditEvents).values({
+      userId,
+      entity: "session",
+      entityId: sessionId,
+      eventType: "SESSION_REOPENED",
+      payload: {
+        previousActualDate: session.actualDate,
+        supersededRecommendations: superseded,
+      },
+      versions: { rules: "1.0.0" },
+    });
+  });
+}
+
 export async function upsertSet(
   userId: string,
   sessionId: string,
@@ -163,6 +289,58 @@ export async function upsertSet(
   const row = rows[0];
   if (!row) throw new SessionError("NOT_SAVED", "Подход не сохранён", 500);
   return row;
+}
+
+export async function deleteSet(
+  userId: string,
+  sessionId: string,
+  clientSetId: string,
+): Promise<void> {
+  const view = await getSessionView(sessionId, userId);
+  if (!view) {
+    throw new SessionError("NOT_FOUND", "Тренировка не найдена", 404);
+  }
+  ensureActiveCycle(view);
+  if (view.session.status === "COMPLETED") {
+    throw new SessionError(
+      "ALREADY_COMPLETED",
+      "Сначала верните тренировку в работу",
+      409,
+    );
+  }
+  if (view.session.status === "SKIPPED") {
+    throw new SessionError("SESSION_SKIPPED", "Тренировка пропущена", 409);
+  }
+
+  const rows = await getDb()
+    .delete(setPerformances)
+    .where(
+      and(
+        eq(setPerformances.sessionId, sessionId),
+        eq(setPerformances.clientSetId, clientSetId),
+      ),
+    )
+    .returning();
+  const deleted = rows[0];
+  if (!deleted) {
+    throw new SessionError("SET_NOT_FOUND", "Подход не найден", 404);
+  }
+
+  await getDb().insert(auditEvents).values({
+    userId,
+    entity: "session",
+    entityId: sessionId,
+    eventType: "SET_DELETED",
+    payload: {
+      clientSetId,
+      prescriptionId: deleted.prescriptionId,
+      reps: deleted.reps,
+      weightKg: deleted.weightKg,
+      assistanceKg: deleted.assistanceKg,
+      addedKg: deleted.addedKg,
+    },
+    versions: { rules: "1.0.0" },
+  });
 }
 
 export async function saveWellness(
