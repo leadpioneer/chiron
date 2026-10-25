@@ -66,6 +66,12 @@ P0 закрыл тренировочный контур. До допуска т�
   получают `403`. Уже связанные identities не блокируются.
 - Связка Telegram с существующим Web-аккаунтом по короткому коду требует
   bot webhook и отдельного хранилища кодов. Это P1-B, не P1-A.
+- Напоминания: cron в 16:00 `Europe/Moscow`, только `PLANNED`-сессии на
+  сегодня, идемпотентность через audit `REMINDER_SENT`.
+- Inline-кнопка `postpone:<sessionId>` обрабатывается webhook с проверкой
+  `X-Telegram-Bot-Api-Secret-Token`, Telegram identity и владельца сессии.
+- Исходящие вызовы Telegram API на staging идут через
+  `TELEGRAM_PROXY_URL`; тело запроса — UTF-8 JSON.
 
 ### 4. LLM
 

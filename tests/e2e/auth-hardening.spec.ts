@@ -111,6 +111,15 @@ test("session cookie is rotated after seven days", async ({ page }) => {
   }
 });
 
+test("telegram webhook rejects requests without the secret", async ({
+  request,
+}) => {
+  const response = await request.post("/api/telegram/webhook", {
+    data: { update_id: 1 },
+  });
+  expect(response.status()).toBe(403);
+});
+
 test("security headers are present", async ({ request }) => {
   const response = await request.get("/login");
   expect(response.ok()).toBeTruthy();

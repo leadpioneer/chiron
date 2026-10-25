@@ -38,6 +38,12 @@ const exerciseRows = [
     aliases: ["румынская тяга", "румынка", "rdl"],
   },
   {
+    slug: "glute_bridge",
+    name: "Ягодичный мостик",
+    pattern: "HINGE",
+    aliases: ["ягодичный мостик", "ягодичный мост", "glute bridge"],
+  },
+  {
     slug: "squat",
     name: "Присед",
     pattern: "SQUAT",
@@ -153,6 +159,16 @@ const variantRows = [
     sides: 1,
   },
   {
+    exercise: "glute_bridge",
+    slug: "barbell_glute_bridge",
+    name: "Ягодичный мост со штангой",
+    equipment: "BARBELL",
+    loadMode: "EXTERNAL",
+    incrementKg: 5,
+    pair: false,
+    sides: 1,
+  },
+  {
     exercise: "squat",
     slug: "front_squat",
     name: "Фронтальный присед",
@@ -252,6 +268,7 @@ const libraryByVariantSlug: Record<string, string> = {
   dumbbell_pullover: "Bent-Arm_Dumbbell_Pullover",
   barbell_rdl: "Romanian_Deadlift",
   dumbbell_rdl: "Stiff-Legged_Dumbbell_Deadlift",
+  barbell_glute_bridge: "Barbell_Glute_Bridge",
   front_squat: "Front_Barbell_Squat",
   hack_squat: "Hack_Squat",
   leg_extension: "Leg_Extensions",

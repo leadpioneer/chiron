@@ -59,6 +59,9 @@ LLM. Эти сведения относятся к персональным, п�
   PAUSE` с областью действия и объяснением.
 - Подтверждение, редактирование и отклонение рекомендации.
 - Copy-on-write версии плана, решения и audit.
+- Замена основного или подсобного упражнения из каталога: новая версия плана,
+  decision и audit, нагрузка обнуляется для калибровки. К румынке добавлен
+  ягодичный мостик.
 - Safety-гейты, red-флаги и пауза тренировочных рекомендаций.
 - Локальный парсер текста и опциональный LLM-парсер (routerai/OpenAI-compatible,
   Gemini как альтернатива) с fallback, kill switch `LLM_ENABLED=0`, per-user и
@@ -142,6 +145,9 @@ npm run dev
 | `TELEGRAM_BOT_TOKEN` | проверка `initData` Mini App и Login Widget |
 | `TELEGRAM_BOT_USERNAME` | username бота для Login Widget, без `@` |
 | `TELEGRAM_ALLOWLIST` | username/id, которым разрешена регистрация через Telegram |
+| `TELEGRAM_WEBHOOK_SECRET` | секрет webhook для inline-кнопок |
+| `TELEGRAM_PROXY_URL` | HTTP-прокси для исходящих вызовов Telegram API |
+| `TELEGRAM_API_TIMEOUT_MS` | таймаут Telegram API, по умолчанию 15000 |
 | `EMAIL_PROVIDER` | `resend`, `webhook`, `console` (dev) или `none`; `none` скрывает email-вход |
 | `RESEND_API_KEY` / `EMAIL_FROM` | ключ и отправитель Resend |
 | `EMAIL_REPLY_TO` / `EMAIL_APP_NAME` | необязательные reply-to и имя в письме |
@@ -162,11 +168,11 @@ npm run dev
 ## Команды
 
 ```bash
-npm test               # 142 доменных теста, включая 50 golden-кейсов парсера
+npm test               # 143 доменных теста, включая 50 golden-кейсов парсера
 npm run typecheck      # TypeScript во всех workspace
 npm run build          # production build Next.js
 npm run test:cycle     # полный симулятор 28 и 23 сессий на чистой test-БД
-npm run test:e2e       # Playwright: 33 сценария
+npm run test:e2e       # Playwright: 35 сценариев
 npm run test:llm-eval  # метрики LLM на 50 golden-кейсах (локальный парсер)
 npm run db:test:prepare # создать/мигрировать/засеять chiron_test
 npm run db:cleanup     # удалить старые использованные magic links
@@ -318,7 +324,7 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
   калибровки.
 - Офлайн-очередь подходов не реализована; PWA кэширует оболочку и работает
   онлайн для записи.
-- Golden parser dataset: 50 эталонных текстовых кейсов; всего 142 теста.
+- Golden parser dataset: 50 эталонных текстовых кейсов; всего 143 теста.
   Живой LLM-eval прошёл на staging: numeric 99%, red/yellow 100%, invalid JSON
   0% после retry.
 - Telegram и LLM требуют внешних ключей; без них приложение работает в
@@ -346,7 +352,7 @@ npm run test:e2e
 Последний сквозной тестовый цикл: [`docs/testing/cycle-002-2026-10-24.md`](docs/testing/cycle-002-2026-10-24.md)
 (28/23 сессии, 106 доменных тестов, 22 Playwright-сценария, CI).
 P1-A: [`docs/testing/p1-alpha-readiness-2026-10-25.md`](docs/testing/p1-alpha-readiness-2026-10-25.md)
-(142 теста, 50 golden-кейсов, 33 Playwright-сценария, live LLM eval и restore-drill).
+(143 теста, 50 golden-кейсов, 35 Playwright-сценариев, live LLM eval и restore-drill).
 Предыдущий цикл: [`docs/testing/cycle-001-2026-10-24.md`](docs/testing/cycle-001-2026-10-24.md).
 Технический отчёт сессии: [`docs/reports/technical-session-2026-10-24.md`](docs/reports/technical-session-2026-10-24.md).
 

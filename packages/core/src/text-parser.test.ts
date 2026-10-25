@@ -38,6 +38,15 @@ describe("local parser", () => {
     expect(result.parsedFacts.sets).toHaveLength(0);
   });
 
+  it("parses glute bridge as a hinge accessory", () => {
+    const result = parseWorkoutText("ягодичный мостик 40 на 10");
+    expect(result.parsedFacts.exerciseAlias).toBe("ягодичный мостик");
+    expect(result.parsedFacts.sets[0]).toMatchObject({
+      weightKg: 40,
+      reps: 10,
+    });
+  });
+
   it("normalizes provider aliases to catalog names", () => {
     expect(normalizeExerciseAlias("жим")).toBe("жим лёжа");
     expect(normalizeExerciseAlias("гравитрон")).toBe("подтягивания");

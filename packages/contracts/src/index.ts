@@ -243,6 +243,11 @@ export const rescheduleSessionSchema = z.object({
 });
 export type RescheduleSessionInput = z.infer<typeof rescheduleSessionSchema>;
 
+export const replaceExerciseSchema = z.object({
+  variantId: z.string().uuid(),
+});
+export type ReplaceExerciseInput = z.infer<typeof replaceExerciseSchema>;
+
 export const cycleReviewActionSchema = z.enum(["REBUILD", "STOP"]);
 export type CycleReviewAction = z.infer<typeof cycleReviewActionSchema>;
 

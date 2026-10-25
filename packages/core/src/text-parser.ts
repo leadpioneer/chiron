@@ -15,6 +15,15 @@ const EXERCISE_ALIASES: Array<{ canonical: string; aliases: string[] }> = [
     aliases: ["румынская тяга", "румынка", "rdl", "румынскую"],
   },
   {
+    canonical: "ягодичный мостик",
+    aliases: [
+      "ягодичный мостик",
+      "ягодичный мост",
+      "ягодичный мост со штангой",
+      "glute bridge",
+    ],
+  },
+  {
     canonical: "присед",
     aliases: ["присед", "приседания", "фронтальный присед", "гакк", "squat"],
   },

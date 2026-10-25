@@ -180,6 +180,22 @@ curl -fsSI https://fit.leadpioneer.ru/login | grep -i x-robots-tag
 Не добавлять домен в поисковые панели и не публиковать ссылки в индексируемых
 местах.
 
+### 8.2. Telegram-напоминания
+
+- Cron `/etc/cron.d/chiron-reminders` запускает
+  `/opt/chiron/reminders.sh` в 16:00 по времени сервера
+  (`Europe/Moscow`).
+- Скрипт отправляет сообщение только пользователям с Telegram identity и
+  `PLANNED`-сессией на сегодня; повторный запуск в тот же день не дублирует
+  сообщение благодаря audit `REMINDER_SENT`.
+- Inline-кнопка «Отложить на завтра» обрабатывается
+  `POST /api/telegram/webhook`; webhook проверяет secret и владельца сессии.
+- Исходящие вызовы Telegram API идут через `TELEGRAM_PROXY_URL`
+  (`http://127.0.0.1:2080` на staging).
+- Проверка без отправки: `send-reminders.mts --dry-run`.
+- Тест только владельцу: `--test-telegram-id=<id>`; другим тестерам
+  сообщения не отправляются.
+
 ## 9. Обновление
 
 ```bash

@@ -25,10 +25,20 @@ const variants: Record<string, VariantInfo> = {
     sides: 1,
   },
   barbell_rdl: {
-    id: "v-rdl",
+    id: "v-hinge",
     slug: "barbell_rdl",
-    name: "Румынская тяга со штангой",
+    name: "Румынская тяга",
     exerciseName: "Румынская тяга",
+    loadMode: "EXTERNAL",
+    incrementKg: 5,
+    pair: false,
+    sides: 1,
+  },
+  barbell_glute_bridge: {
+    id: "v-glute-bridge",
+    slug: "barbell_glute_bridge",
+    name: "Ягодичный мост со штангой",
+    exerciseName: "Ягодичный мостик",
     loadMode: "EXTERNAL",
     incrementKg: 5,
     pair: false,
@@ -215,9 +225,11 @@ describe("buildPlan", () => {
     expect(
       pull.prescriptions.some((item) => item.key === "biceps_curl"),
     ).toBe(true);
-    expect(
-      pull.prescriptions.some((item) => item.key === "bridge"),
-    ).toBe(false);
+    const bridge = pull.prescriptions.find((item) => item.key === "bridge");
+    expect(bridge).toBeDefined();
+    expect(bridge?.variantSlug).toBe("barbell_glute_bridge");
+    expect(bridge?.supportsKey).toBe("hinge_primary");
+    expect(bridge?.optional).toBe(false);
   });
 
   it("applies the return multiplier to starting loads", () => {

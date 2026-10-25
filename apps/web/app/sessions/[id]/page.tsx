@@ -32,6 +32,7 @@ export default async function SessionPage({
       goal: block.goal,
       prescriptions: block.prescriptions.map((item) => ({
         id: item.id,
+        exerciseVariantId: item.exerciseVariantId,
         exerciseName: item.exerciseName,
         variantName: item.variantName,
         role: item.role,

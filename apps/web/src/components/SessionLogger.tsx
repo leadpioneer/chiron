@@ -10,6 +10,7 @@ import type {
 } from "@chiron/contracts";
 import { RED_FLAG_TEXT } from "@chiron/core";
 import { formatDate, formatRange, formatWeight } from "@/src/lib/dates";
+import { ReplaceExerciseButton } from "./ReplaceExerciseButton";
 
 interface LastSet {
   weightKg: number | null;
@@ -22,6 +23,7 @@ interface LastSet {
 
 interface ClientPrescription {
   id: string;
+  exerciseVariantId: string;
   exerciseName: string;
   variantName: string;
   role: string;
@@ -720,17 +722,30 @@ export function SessionLogger({ view }: { view: ClientView }) {
                         : prescription.targetRir}
                     </div>
                   </div>
-                  <span
-                    className={
-                      prescription.role === "PRIMARY"
-                        ? "badge badge-primary"
-                        : "badge badge-accessory"
-                    }
+                  <div
+                    className="stack"
+                    style={{ gap: 6, alignItems: "flex-end" }}
                   >
-                    {prescription.role === "PRIMARY"
-                      ? "PRIMARY"
-                      : prescription.role}
-                  </span>
+                    <span
+                      className={
+                        prescription.role === "PRIMARY"
+                          ? "badge badge-primary"
+                          : "badge badge-accessory"
+                      }
+                    >
+                      {prescription.role === "PRIMARY"
+                        ? "PRIMARY"
+                        : prescription.role}
+                    </span>
+                    {view.session.status === "PLANNED" ? (
+                      <ReplaceExerciseButton
+                        prescriptionId={prescription.id}
+                        targetBlockKey={prescription.targetBlockKey}
+                        role={prescription.role}
+                        currentVariantId={prescription.exerciseVariantId}
+                      />
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="exercise-meta">

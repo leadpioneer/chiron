@@ -13,3 +13,4 @@ export * from "./cycle-review";
 export * from "./templates";
 export * from "./text-parser";
 export * from "./golden-cases";
+export * from "./exercise-catalog";
