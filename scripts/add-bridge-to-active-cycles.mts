@@ -45,7 +45,10 @@ for (const cycle of activeCycles) {
   }
 
   const already = await db
-    .select({ id: prescriptions.id })
+    .select({
+      id: prescriptions.id,
+      optional: prescriptions.optional,
+    })
     .from(prescriptions)
     .where(
       and(
@@ -54,7 +57,8 @@ for (const cycle of activeCycles) {
       ),
     )
     .limit(1);
-  if (already[0]) {
+  const existingBridge = already[0];
+  if (existingBridge?.optional) {
     skipped += 1;
     continue;
   }
@@ -103,6 +107,14 @@ for (const cycle of activeCycles) {
   const decisionId = crypto.randomUUID();
   const newVersionId = crypto.randomUUID();
   const userId = cycle.userId;
+  const optionalFix = Boolean(existingBridge);
+  const action = optionalFix
+    ? "EXERCISE_OPTIONAL_SET"
+    : "EXERCISE_ADDED";
+  const reasonCategory = optionalFix ? "EXERCISE_OPTIONAL" : "EXERCISE_ADD";
+  const explanation = optionalFix
+    ? "Ягодичный мостик отмечен необязательным."
+    : "Ягодичный мостик добавлен к румынской тяге.";
 
   await db.transaction(async (tx) => {
     const locked = await tx
@@ -128,14 +140,22 @@ for (const cycle of activeCycles) {
       id: recommendationId,
       cycleId: cycle.id,
       sessionId: null,
-      action: "MANUAL_EXERCISE_ADD",
+      action: optionalFix
+        ? "MANUAL_EXERCISE_OPTIONAL"
+        : "MANUAL_EXERCISE_ADD",
       scopeType: "TARGET_BLOCK",
       scopeId: posterior.id,
       status: "ACCEPTED",
-      explanation: "Ягодичный мостик добавлен к румынской тяге.",
+      explanation,
       candidates: {
-        reasons: ["Плановое дополнение подсобного упражнения"],
-        ruleIds: ["MANUAL_EXERCISE_ADD"],
+        reasons: [
+          optionalFix
+            ? "Подсобное упражнение отмечено необязательным"
+            : "Плановое дополнение подсобного упражнения",
+        ],
+        ruleIds: [
+          optionalFix ? "MANUAL_EXERCISE_OPTIONAL" : "MANUAL_EXERCISE_ADD",
+        ],
         safety: {
           label: "GREEN",
           reasons: [],
@@ -161,10 +181,10 @@ for (const cycle of activeCycles) {
       recommendationId,
       userId,
       outcome: "EDITED",
-      reasonCategory: "EXERCISE_ADD",
+      reasonCategory,
       comment: null,
       before: {
-        action: "EXERCISE_ADDED",
+        action,
         blockKey: "posterior_chain",
         exercises: blockPrescriptions.map((row) => ({
           prescriptionId: row.prescription.id,
@@ -173,7 +193,7 @@ for (const cycle of activeCycles) {
         })),
       },
       after: {
-        action: "EXERCISE_ADDED",
+        action,
         blockKey: "posterior_chain",
         variantSlug: bridge.slug,
         planVersionId: newVersionId,
@@ -185,7 +205,9 @@ for (const cycle of activeCycles) {
       cycleId: cycle.id,
       version: nextVersion,
       parentVersionId: currentVersionId,
-      reason: "Добавлен ягодичный мостик",
+      reason: optionalFix
+        ? "Ягодичный мостик отмечен необязательным"
+        : "Добавлен ягодичный мостик",
       decisionId,
       rulesVersion: "1.0.0",
     });
@@ -277,28 +299,39 @@ for (const cycle of activeCycles) {
       throw new Error("Could not remap posterior chain block");
     }
 
-    await tx.insert(prescriptions).values({
-      planVersionId: newVersionId,
-      targetBlockId: newPosteriorId,
-      exerciseVariantId: bridge.id,
-      role: "ACCESSORY",
-      supportsPrimaryId: newHingeId,
-      sessionKey: posterior.sessionKey,
-      plannedOrder: maxOrder + 1,
-      optional: false,
-      sets: 2,
-      repMin: 8,
-      repMax: 12,
-      targetReps: 10,
-      targetRir: 2,
-      loadMode: bridge.loadMode,
-      weightKg: null,
-      assistanceKg: null,
-      addedKg: null,
-      incrementKg: bridge.incrementKg,
-      pair: bridge.pair,
-      sides: bridge.sides,
-    });
+    if (existingBridge) {
+      const existingNewId = prescriptionIdMap.get(existingBridge.id);
+      if (!existingNewId) {
+        throw new Error("Could not remap existing bridge prescription");
+      }
+      await tx
+        .update(prescriptions)
+        .set({ optional: true })
+        .where(eq(prescriptions.id, existingNewId));
+    } else {
+      await tx.insert(prescriptions).values({
+        planVersionId: newVersionId,
+        targetBlockId: newPosteriorId,
+        exerciseVariantId: bridge.id,
+        role: "ACCESSORY",
+        supportsPrimaryId: newHingeId,
+        sessionKey: posterior.sessionKey,
+        plannedOrder: maxOrder + 1,
+        optional: true,
+        sets: 2,
+        repMin: 8,
+        repMax: 12,
+        targetReps: 10,
+        targetRir: 2,
+        loadMode: bridge.loadMode,
+        weightKg: null,
+        assistanceKg: null,
+        addedKg: null,
+        incrementKg: bridge.incrementKg,
+        pair: bridge.pair,
+        sides: bridge.sides,
+      });
+    }
 
     await tx
       .update(trainingCycles)
@@ -356,7 +389,7 @@ for (const cycle of activeCycles) {
       entityId: newVersionId,
       eventType: "PLAN_VERSION_CREATED",
       payload: {
-        action: "EXERCISE_ADDED",
+        action,
         blockKey: "posterior_chain",
         variantSlug: bridge.slug,
         decisionId,

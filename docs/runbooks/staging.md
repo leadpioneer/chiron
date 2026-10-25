@@ -188,8 +188,9 @@ curl -fsSI https://fit.leadpioneer.ru/login | grep -i x-robots-tag
 - Скрипт отправляет сообщение только пользователям с Telegram identity и
   `PLANNED`-сессией на сегодня; повторный запуск в тот же день не дублирует
   сообщение благодаря audit `REMINDER_SENT`.
-- Inline-кнопка «Отложить на завтра» обрабатывается
+- Inline-кнопки «Отложить на завтра» и «Окей» обрабатываются
   `POST /api/telegram/webhook`; webhook проверяет secret и владельца сессии.
+  «Окей» удаляет сообщение, «Отложить» переносит сессию.
 - Исходящие вызовы Telegram API идут через `TELEGRAM_PROXY_URL`
   (`http://127.0.0.1:2080` на staging).
 - Проверка без отправки: `send-reminders.mts --dry-run`.

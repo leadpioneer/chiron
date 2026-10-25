@@ -11,6 +11,7 @@ import {
 import { addDaysIso } from "@/src/lib/dates";
 import {
   answerTelegramCallback,
+  deleteTelegramMessage,
   editTelegramMessage,
 } from "@/src/lib/telegram-api";
 import {
@@ -53,6 +54,37 @@ async function answer(queryId: string, text: string): Promise<void> {
   }
 }
 
+async function clearMessage(query: {
+  message?: {
+    message_id: number;
+    chat: { id: number };
+    text?: string;
+  };
+}): Promise<void> {
+  if (!query.message) return;
+  try {
+    await deleteTelegramMessage(
+      query.message.chat.id,
+      query.message.message_id,
+    );
+  } catch (error) {
+    console.error(
+      "Telegram message delete failed",
+      error instanceof Error ? error.name : "unknown",
+    );
+    try {
+      await editTelegramMessage(
+        query.message.chat.id,
+        query.message.message_id,
+        "Окей",
+        { replyMarkup: { inline_keyboard: [] } },
+      );
+    } catch {
+      // The callback was already acknowledged; nothing else to do.
+    }
+  }
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   if (!validSecret(request)) {
     return NextResponse.json(
@@ -71,6 +103,48 @@ export async function POST(request: Request): Promise<NextResponse> {
   const query = update?.callback_query;
   const data = query?.data ?? "";
   if (!query || !data) return NextResponse.json({ ok: true });
+
+  if (data === "dismiss_test") {
+    await answer(query.id, "Окей");
+    await clearMessage(query);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (data.startsWith("dismiss:")) {
+    const sessionId = data.slice("dismiss:".length);
+    const telegramId = String(query.from.id);
+    const db = getDb();
+    const identityRows = await db
+      .select({ userId: identities.userId })
+      .from(identities)
+      .where(
+        and(
+          eq(identities.provider, "telegram"),
+          eq(identities.providerUserId, telegramId),
+        ),
+      )
+      .limit(1);
+    const userId = identityRows[0]?.userId;
+    if (!userId) {
+      await answer(query.id, "Нет доступа к этой тренировке.");
+      return NextResponse.json({ ok: true });
+    }
+    const owned = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .innerJoin(trainingCycles, eq(sessions.cycleId, trainingCycles.id))
+      .where(
+        and(eq(sessions.id, sessionId), eq(trainingCycles.userId, userId)),
+      )
+      .limit(1);
+    if (!owned[0]) {
+      await answer(query.id, "Тренировка не найдена.");
+      return NextResponse.json({ ok: true });
+    }
+    await answer(query.id, "Окей");
+    await clearMessage(query);
+    return NextResponse.json({ ok: true });
+  }
 
   if (data === "postpone_test") {
     await answer(

@@ -109,7 +109,7 @@ export const V1_TEMPLATE: TemplateDefinition = {
               key: "bridge",
               variantSlug: "barbell_glute_bridge",
               role: "ACCESSORY",
-              optional: false,
+              optional: true,
               sets: 2,
               repMin: 8,
               repMax: 12,

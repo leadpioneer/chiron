@@ -234,6 +234,16 @@ export async function answerTelegramCallback(
   });
 }
 
+export async function deleteTelegramMessage(
+  chatId: string | number,
+  messageId: number,
+): Promise<void> {
+  await telegramApi("deleteMessage", {
+    chat_id: chatId,
+    message_id: messageId,
+  });
+}
+
 export async function editTelegramMessage(
   chatId: string | number,
   messageId: number,

@@ -229,7 +229,7 @@ describe("buildPlan", () => {
     expect(bridge).toBeDefined();
     expect(bridge?.variantSlug).toBe("barbell_glute_bridge");
     expect(bridge?.supportsKey).toBe("hinge_primary");
-    expect(bridge?.optional).toBe(false);
+    expect(bridge?.optional).toBe(true);
   });
 
   it("applies the return multiplier to starting loads", () => {

@@ -119,6 +119,10 @@ export async function sendDueReminders(
                 text: "Отложить на завтра",
                 callback_data: `postpone:${item.sessionId}`,
               },
+              {
+                text: "Окей",
+                callback_data: `dismiss:${item.sessionId}`,
+              },
             ],
           ],
         },
@@ -153,6 +157,9 @@ export async function sendTestReminder(
   const callbackData = match
     ? `postpone:${match.sessionId}`
     : "postpone_test";
+  const dismissData = match
+    ? `dismiss:${match.sessionId}`
+    : "dismiss_test";
   const message = await sendTelegramMessage(telegramId, text, {
     replyMarkup: {
       inline_keyboard: [
@@ -160,6 +167,10 @@ export async function sendTestReminder(
           {
             text: "Отложить на завтра",
             callback_data: callbackData,
+          },
+          {
+            text: "Окей",
+            callback_data: dismissData,
           },
         ],
       ],
