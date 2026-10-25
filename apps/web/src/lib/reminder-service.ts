@@ -1,11 +1,8 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   auditEvents,
-  exerciseVariants,
-  exercises,
   getDb,
   identities,
-  prescriptions,
   sessions,
   trainingCycles,
   users,
@@ -18,12 +15,6 @@ export interface DueReminder {
   userId: string;
   telegramId: string;
   sessionKey: string;
-  plannedDate: string;
-  exercises: Array<{
-    exerciseName: string;
-    variantName: string;
-    role: string;
-  }>;
 }
 
 export function todayInMoscow(now: Date = new Date()): string {
@@ -41,21 +32,7 @@ export function tomorrowInMoscow(now: Date = new Date()): string {
 
 function reminderText(item: DueReminder): string {
   const title = item.sessionKey === "A" ? "Тяни" : "Толкай";
-  const lines = item.exercises.map((exercise) => {
-    const variant =
-      exercise.variantName && exercise.variantName !== exercise.exerciseName
-        ? ` — ${exercise.variantName}`
-        : "";
-    return `• ${exercise.exerciseName}${variant}`;
-  });
-  return [
-    `Сегодня тренировка «${title}».`,
-    item.plannedDate,
-    "",
-    ...lines,
-    "",
-    "Если планы изменились, нажмите «Отложить на завтра».",
-  ].join("\n");
+  return `Сегодня тренировка «${title}».`;
 }
 
 export async function getDueReminders(
@@ -65,9 +42,7 @@ export async function getDueReminders(
   const rows = await db
     .select({
       sessionId: sessions.id,
-      planVersionId: sessions.planVersionId,
       sessionKey: sessions.sessionKey,
-      plannedDate: sessions.plannedDate,
       userId: users.id,
       telegramId: identities.providerUserId,
     })
@@ -112,33 +87,11 @@ export async function getDueReminders(
     );
     if (alreadySent) continue;
 
-    const items = await db
-      .select({
-        exerciseName: exercises.name,
-        variantName: exerciseVariants.name,
-        role: prescriptions.role,
-      })
-      .from(prescriptions)
-      .innerJoin(
-        exerciseVariants,
-        eq(prescriptions.exerciseVariantId, exerciseVariants.id),
-      )
-      .innerJoin(exercises, eq(exerciseVariants.exerciseId, exercises.id))
-      .where(
-        and(
-          eq(prescriptions.planVersionId, row.planVersionId),
-          eq(prescriptions.sessionKey, row.sessionKey),
-        ),
-      )
-      .orderBy(asc(prescriptions.plannedOrder));
-
     due.push({
       sessionId: row.sessionId,
       userId: row.userId,
       telegramId: row.telegramId,
       sessionKey: row.sessionKey,
-      plannedDate: row.plannedDate,
-      exercises: items,
     });
   }
   return due;
@@ -196,12 +149,7 @@ export async function sendTestReminder(
   const match = due.find((item) => item.telegramId === telegramId);
   const text = match
     ? `Тестовое напоминание.\n\n${reminderText(match)}`
-    : [
-        "Chiron: тестовое напоминание.",
-        "",
-        "Сегодня тренировка. Реальное расписание появится после онбординга.",
-        "Кнопка «Отложить на завтра» уже подключена.",
-      ].join("\n");
+    : "Тестовое напоминание. Сегодня тренировка.";
   const callbackData = match
     ? `postpone:${match.sessionId}`
     : "postpone_test";
