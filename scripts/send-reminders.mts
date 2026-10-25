@@ -25,6 +25,7 @@ try {
       JSON.stringify({
         event: "test_reminder_sent",
         messageId: result.messageId,
+        sessionId: result.sessionId,
       }),
     );
   } else if (args.includes("--dry-run")) {

@@ -191,27 +191,34 @@ export async function sendDueReminders(
 
 export async function sendTestReminder(
   telegramId: string,
-): Promise<{ messageId: number }> {
-  const message = await sendTelegramMessage(
-    telegramId,
-    [
-      "Chiron: тестовое напоминание.",
-      "",
-      "Сегодня тренировка. Реальное расписание появится после онбординга.",
-      "Кнопка «Отложить на завтра» уже подключена.",
-    ].join("\n"),
-    {
-      replyMarkup: {
-        inline_keyboard: [
-          [
-            {
-              text: "Отложить на завтра",
-              callback_data: "postpone_test",
-            },
-          ],
+): Promise<{ messageId: number; sessionId: string | null }> {
+  const due = await getDueReminders(todayInMoscow());
+  const match = due.find((item) => item.telegramId === telegramId);
+  const text = match
+    ? `Тестовое напоминание.\n\n${reminderText(match)}`
+    : [
+        "Chiron: тестовое напоминание.",
+        "",
+        "Сегодня тренировка. Реальное расписание появится после онбординга.",
+        "Кнопка «Отложить на завтра» уже подключена.",
+      ].join("\n");
+  const callbackData = match
+    ? `postpone:${match.sessionId}`
+    : "postpone_test";
+  const message = await sendTelegramMessage(telegramId, text, {
+    replyMarkup: {
+      inline_keyboard: [
+        [
+          {
+            text: "Отложить на завтра",
+            callback_data: callbackData,
+          },
         ],
-      },
+      ],
     },
-  );
-  return { messageId: message.message_id };
+  });
+  return {
+    messageId: message.message_id,
+    sessionId: match?.sessionId ?? null,
+  };
 }
