@@ -21,17 +21,17 @@ Chiron зафиксирован как некоммерческий проект
 | Проверка | Результат |
 |---|---|
 | `npm run typecheck` | pass: web, core, db |
-| `npm test` | 142/142, 12 файлов |
+| `npm test` | 143/143, 12 файлов |
 | `npm run test:llm-eval` | 50/50 кейсов, gate pass |
 | Live LLM eval (routerai) | gate pass: red 100%, yellow 100%, numeric 99%, invalid JSON 0% |
 | `npm run build` | pass, 27 маршрутов, Proxy (Middleware) |
 | `npm run test:cycle` | pass: 28 и 23 сессии |
-| `npm run test:e2e` | 33/33, Chromium |
+| `npm run test:e2e` | 35/35, Chromium |
 | Production-mode smoke | health 200, CSRF 403, invalid config exit 1 |
 | Native staging | HTTPS, health 200, TLS Let's Encrypt, noindex |
 | Backup/restore drill | pass: `pg_dump` + `pg_restore` в отдельную БД |
 | Compose staging | `docker compose config` pass |
-| GitHub Actions CI | success, [run 40143095774](https://github.com/leadpioneer/chiron/actions/runs/40143095774) |
+| GitHub Actions CI | success, [run 40145979850](https://github.com/leadpioneer/chiron/actions/runs/40145979850) |
 
 ## LLM-eval
 
@@ -95,6 +95,28 @@ id и ключи не публикуются в репозитории.
   `plan_versions`, `sessions`, `set_performances`, `audit_events` совпали.
 - **Email:** `EMAIL_PROVIDER=none`; форма email скрыта, magic link отвечает
   `503`. Вход только через Telegram до подключения провайдера.
+
+## Post-P1 additions (25.10.2026)
+
+- **Ягодичный мостик:** curated `glute_bridge` / `barbell_glute_bridge`
+  добавлен в `posterior_chain` как подсобное к румынской тяге (2 × 8–12,
+  RIR 2). Новые циклы получают его из шаблона; в активный план владельца
+  добавлена версия 2 через one-off migration, сессия показывает «Румынская
+  тяга» и «Ягодичный мостик».
+- **Замена упражнений:** кнопка «Заменить» у каждого упражнения в
+  `PLANNED`-сессии. E2E заменяет основную румынскую тягу на вариант с
+  гантелями и эстетический бицепс на махи; создаются plan version 2 и 3,
+  две decision `EXERCISE_SWAP`, два audit `PLAN_VERSION_CREATED`, нагрузка
+  обнуляется. Миграция мостика идемпотентна (второй запуск: updated 0).
+- **Telegram-напоминания:** cron `0 16 * * *` (MSK) установлен; dry-run
+  видит 1 сессию на сегодня. Тестовое сообщение отправлено только владельцу
+  (message_id 92) с реальной сессией и кнопкой «Отложить на завтра».
+  Webhook: без secret → `403`, с secret → `200`, внешний путь через прокси →
+  `200`. Симулированный callback перенёс тестовую сессию на 2026-10-26 и
+  записал `SESSION_RESCHEDULED`; тестовые данные удалены.
+- **Кодировка:** исходящие сообщения бота теперь идут через UTF-8 JSON и
+  HTTP-прокси; старые `?????` были следствием PowerShell-отправки, не
+  серверного кода.
 
 ## Полный цикл
 
@@ -228,6 +250,9 @@ webhook-провайдером email, `ALPHA_EMAIL_ALLOWLIST=*@chiron.test` и
 
 - Login Widget в браузере требует `/setdomain` в BotFather; Mini App через
   кнопку меню уже работает.
+- Живой callback из Telegram-клиента не нажимался; симулированный webhook
+  прошёл. `last_error` в Bot API остался от запроса до деплоя и очистится
+  после первого успешного реального callback.
 - Нет проверки на реальных iOS Safari и Android Chrome.
 - Связка Telegram с Web-аккаунтом по коду, юридические документы, РКН/DPIA,
   alpha-метрики, внешние алерты и поддержка — P1-B.

@@ -53,6 +53,11 @@ ADR обновлены.
 - native staging с HTTPS, noindex, healthcheck, systemd, ежедневным бэкапом и
   проверенным restore-drill.
 
+**Post-P1 (25.10.2026):** ягодичный мостик в RDL-день, замена основного и
+подсобного упражнения из каталога через новую версию плана, Telegram-
+напоминания в 16:00 МСК с кнопкой «Отложить на завтра», UTF-8 сообщения и
+webhook. Решения — [`ADR-006`](../decisions/ADR-006-exercise-swap-and-telegram-reminders.md).
+
 **Осталось в P1-B:**
 
 - BotFather `/setdomain`, реальные iOS/Android, связка Telegram с Web-аккаунтом;
