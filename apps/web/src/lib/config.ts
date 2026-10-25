@@ -84,7 +84,6 @@ export function llmProvider(): LlmProvider {
   if (explicit === "gemini") return "gemini";
   if (explicit === "none" || explicit === "disabled") return "none";
   if (process.env.LLM_API_KEY && process.env.LLM_BASE_URL) return "openai";
-  if (process.env.GEMINI_API_KEY) return "gemini";
   return "none";
 }
 
@@ -202,6 +201,11 @@ export function validateRuntimeConfig(): RuntimeConfigReport {
       warnings.push(
         "LLM provider is not configured; the local parser is used",
       );
+      if (process.env.GEMINI_API_KEY) {
+        warnings.push(
+          "GEMINI_API_KEY is ignored unless LLM_PROVIDER=gemini; Gemini is disabled for alpha",
+        );
+      }
     }
   }
 

@@ -17,6 +17,7 @@ Read `docs/decisions/v1-decisions.md` before changing product behaviour.
 6. Metrics are per exercise. Never add tonnage across exercises into a "strength score".
 7. Every recommendation, parse and plan change stores rules, prompt, model and schema versions.
 8. No diagnosis, no "this pain is safe", no "the app prevented injury", no guaranteed results.
+9. An LLM request carries only the system prompt and workout text. It never includes `userId`, email, Telegram id, display name, session cookie or other identifiers.
 
 ## Architecture
 
@@ -49,6 +50,11 @@ Postgres for local development:
 docker compose up -d db
 copy .env.example .env
 ```
+
+## Local machine notes
+
+Machine-specific access notes live in `AGENTS.local.md` next to this file. It is
+gitignored and must not be committed. Read it before deployment or server work.
 
 ## Change gates
 

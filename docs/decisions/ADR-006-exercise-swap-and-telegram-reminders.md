@@ -94,6 +94,12 @@
 - Browser Login Widget по-прежнему требует `/setdomain` в BotFather; Mini App
   и напоминания от этого не зависят.
 
+## Дополнение от 25.10.2026
+
+По [`ADR-007`](ADR-007-tma-only-and-personal-data-scope.md) alpha существует
+только как Telegram Mini App. Login Widget и связка Telegram с Web-аккаунтом
+отложены на неопределённый срок и не входят в P1-B; `/setdomain` уже выполнен.
+
 ## Альтернативы
 
 1. **Менять упражнение на месте, без новой версии.** Отклонено: нарушает

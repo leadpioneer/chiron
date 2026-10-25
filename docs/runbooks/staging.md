@@ -1,6 +1,7 @@
 # Staging runbook
 
-- **Назначение:** staging для 3–5 приглашённых тестеров.
+- **Назначение:** staging для личного контура (автор и его близкий человек).
+  Расширение до 3–5 тестеров — отдельное решение.
 - **Статус:** P1-A, конфигурация подготовлена; живой прогон с доменом и TLS —
   P1-B.
 - **Связанные документы:** [`ADR-003`](../decisions/ADR-003-alpha-security-and-operations.md),
@@ -122,7 +123,7 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging start web
 curl -fsS https://$DOMAIN/api/health
 ```
 
-Учебная тревога перед допуском тестеров:
+Учебная тревога перед допуском личного круга:
 
 1. Снять бэкап.
 2. Создать тестовую запись (например, завершить сессию тестового атлета).
@@ -148,17 +149,14 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging ps
 docker compose -f docker-compose.staging.yml --env-file .env.staging logs --tail=100 web
 ```
 
-## 8. Допуск тестеров
+## 8. Допуск личного круга
 
-1. Добавить Telegram username/id в `TELEGRAM_ALLOWLIST`.
-2. Для email-тестеров добавить адреса в `ALPHA_EMAIL_ALLOWLIST` (точный адрес
-   или `*@domain`) и перезапустить web. Пустой список допустим, если задан
-   `TELEGRAM_ALLOWLIST`: новые email-регистрации блокируются. Хотя бы один
-   allowlist в production обязателен.
-3. Для email-тестеров создать magic link вручную только если провайдер
-   недоступен; ссылка действует 15 минут.
-4. Проверить вход на iOS Safari и Android Chrome.
-5. Записать тестера, устройство, дату и результат.
+1. Добавить Telegram id/username партнёрши в `TELEGRAM_ALLOWLIST`.
+2. Email — не alpha-путь. `ALPHA_EMAIL_ALLOWLIST` оставить пустым или только
+   для владельца; новые email-регистрации блокируются.
+3. Magic link вручную — только владельцу, если нужен технический вход.
+4. Проверить вход через TMA на iOS Safari и Android Chrome.
+5. Записать пользователя, устройство, дату и результат.
 6. Публичную регистрацию не открывать.
 
 ### 8.1. Запрет индексации
@@ -206,7 +204,7 @@ sudo systemctl restart chiron-telegram-poll
 sudo journalctl -u chiron-telegram-poll -n 50 --no-pager
 ```
 - Проверка без отправки: `send-reminders.mts --dry-run`.
-- Тест только владельцу: `--test-telegram-id=<id>`; другим тестерам
+- Тест только владельцу: `--test-telegram-id=<id>`; другим пользователям
   сообщения не отправляются.
 
 ## 9. Обновление
@@ -224,9 +222,15 @@ curl -fsS https://$DOMAIN/api/health
 
 - IP rate limit хранится в памяти процесса; при нескольких инстансах нужен
   общий store.
-- Связка Telegram с существующим Web-аккаунтом по коду — P1-B.
+- Связка Telegram с существующим Web-аккаунтом отложена на неопределённый
+  срок; alpha-путь — только Telegram Mini App
+  ([`ADR-007`](../decisions/ADR-007-tma-only-and-personal-data-scope.md)).
 - PWA и Telegram не проверены на реальных iOS/Android в этой сессии.
 - Некоммерческий статус и границы данных зафиксированы в
-  [`ADR-004`](../decisions/ADR-004-non-commercial-and-data-scope.md).
-  Юридические документы и согласие на LLM для текущего серверного контура —
-  P1-B; для буквального zero-PD нужен отдельный локальный контур.
+  [`ADR-004`](../decisions/ADR-004-non-commercial-and-data-scope.md). Для
+  личного использования (автор и его близкий человек — партнёрша) действует
+  исключение ч. 2 ст. 1 152-ФЗ по позиции владельца; при расширении до 3–5
+  тестеров нужны юридические документы и проверка
+  ([`ADR-007`](../decisions/ADR-007-tma-only-and-personal-data-scope.md)).
+  В LLM уходит только обезличенный текст без идентификаторов; активный
+  routerai, Gemini выключен.

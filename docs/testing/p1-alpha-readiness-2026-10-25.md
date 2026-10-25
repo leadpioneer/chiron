@@ -7,6 +7,11 @@
 - **Среда:** Windows, Node 24, Next.js 16, Playwright Chromium, embedded
   PostgreSQL 18 (совместимый контур)
 
+> **Обновление 25.10.2026:** `/setdomain` выполнен владельцем; Login Widget и
+> связка Telegram/Web не входят в alpha-путь и отложены по
+> [`ADR-007`](../decisions/ADR-007-tma-only-and-personal-data-scope.md).
+> Ниже сохранён срез P1-A на момент отчёта.
+
 ## Статус проекта
 
 Chiron зафиксирован как некоммерческий проект: без платежей, рекламы,

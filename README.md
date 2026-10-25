@@ -12,8 +12,9 @@ Wellness-инструмент: не диагностирует, не лечит 
 ## Статус проекта
 
 Chiron — некоммерческий личный проект: без платежей, подписок, рекламы,
-партнёрских программ, коммерческой аналитики и продажи данных. Alpha
-проводится только по приглашению.
+партнёрских программ, коммерческой аналитики и продажи данных. Личный контур:
+автор и его близкий человек (партнёрша), вход по allowlist Telegram, без
+публичной регистрации.
 
 Цель проекта — тренировочный дневник, а не сбор персональных данных. Данные
 ограничены минимумом, без которого работают вход и дневник: идентификатор
@@ -29,8 +30,9 @@ LLM. Эти сведения относятся к персональным, п�
 
 ## Что уже работает
 
-- Вход по email magic link, Telegram Mini App `initData`, Telegram Login Widget
-  и демо-вход для разработки.
+- Вход через Telegram Mini App `initData` — alpha-путь; email magic link,
+  Telegram Login Widget и демо-вход остаются техническими возможностями для
+  разработки.
 - Rate limit magic link и Telegram, CSRF-проверка Origin, ротация сессионной
   cookie раз в 7 дней, allowlist Telegram, запрет `AUTH_DEV_MODE` в production.
 - Email-провайдер Resend или webhook; русский шаблон письма; ошибка доставки
@@ -158,7 +160,7 @@ npm run dev
 | `EMAIL_REPLY_TO` / `EMAIL_APP_NAME` | необязательные reply-to и имя в письме |
 | `EMAIL_WEBHOOK_URL` | webhook `{to, url}` для отправки magic link |
 | `LLM_ENABLED` | `0` — kill switch, всегда локальный парсер |
-| `LLM_PROVIDER` | `openai` (OpenAI-compatible), `gemini` или `none` |
+| `LLM_PROVIDER` | `openai` (OpenAI-compatible), `gemini` (только явно; для alpha не используется) или `none` |
 | `LLM_BASE_URL` | base URL провайдера, для alpha `https://routerai.ru/api/v1` |
 | `LLM_API_KEY` | ключ OpenAI-compatible провайдера; только серверный env |
 | `LLM_MODEL` | `~deepseek/deepseek-v4-flash-latest` для alpha |
@@ -173,7 +175,7 @@ npm run dev
 ## Команды
 
 ```bash
-npm test               # 143 доменных теста, включая 50 golden-кейсов парсера
+npm test               # 144 доменных теста, включая 50 golden-кейсов парсера
 npm run typecheck      # TypeScript во всех workspace
 npm run build          # production build Next.js
 npm run test:cycle     # полный симулятор 28 и 23 сессий на чистой test-БД
@@ -277,6 +279,10 @@ LLM не пишет план и не пишет в БД. Она разбирае
 4. отклоняет ответ при расхождении;
 5. при ошибке/таймауте использует локальный парсер.
 
+В запрос уходят только system prompt и текст тренировки; идентификаторы не
+передаются. Активный провайдер — routerai; Gemini включается только явным
+`LLM_PROVIDER=gemini` и для alpha не используется.
+
 Версии провайдера, модели, промпта, схемы и правил сохраняются в `llm_calls` и
 `audit_events`.
 
@@ -296,9 +302,18 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
 - Собираются только аккаунт, профиль, тренировки, wellness и текст для LLM.
   Это персональные данные; они обрабатываются минимально и только для работы
   дневника. Проект не заявляет о «нулевой обработке ПД» (см. ADR-004).
+- Для личного использования (автор и его близкий человек — партнёрша)
+  владелец применяет исключение ч. 2 ст. 1 152-ФЗ: уведомление Роскомнадзора
+  не требуется, пока обработка остаётся личной, некоммерческой и без передачи
+  третьим лицам. Это не zero-PD. При расширении до 3–5 тестеров, публичном
+  доступе или монетизации нужна отдельная проверка (`ADR-007`).
+- В запрос к LLM уходят только system prompt и обезличенный текст тренировки;
+  `userId`, email, Telegram id и displayName не передаются. Активный провайдер
+  — routerai; Gemini для alpha выключен.
 - Сырой текст LLM — 90 дней, audit — 365 дней, логи — 30 дней.
 - Экспорт JSON и удаление аккаунта доступны в настройках.
-- Внешние сервисы: LLM (минимизированный контекст), email-провайдер, S3-бэкапы.
+- Внешние сервисы: LLM (обезличенный текст без идентификаторов),
+  email-провайдер, S3-бэкапы.
 - Сторонняя аналитика и реклама не подключены.
 - Magic link: 15 минут, одно использование, в БД только SHA-256 хэш; не более
   5 ссылок на email за 15 минут и не чаще одной в 30 секунд. Новые email
@@ -310,7 +325,7 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
 - Production не стартует без `AUTH_SECRET` ≥32 символов, HTTPS `APP_URL` и
   явного решения по email: провайдер или `EMAIL_PROVIDER=none`; `console`
   запрещён.
-- Alpha-домен закрыт от индексации: `robots.txt` с `Disallow: /`,
+- Staging-домен закрыт от индексации: `robots.txt` с `Disallow: /`,
   `X-Robots-Tag: noindex` и meta robots.
 
 ## Ограничения текущего среза
@@ -329,17 +344,19 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
   калибровки.
 - Офлайн-очередь подходов не реализована; PWA кэширует оболочку и работает
   онлайн для записи.
-- Golden parser dataset: 50 эталонных текстовых кейсов; всего 143 теста.
+- Golden parser dataset: 50 эталонных текстовых кейсов; всего 144 теста.
   Живой LLM-eval прошёл на staging: numeric 99%, red/yellow 100%, invalid JSON
   0% после retry.
 - Telegram и LLM требуют внешних ключей; без них приложение работает в
   локальном/детерминированном режиме.
-- Связка Telegram с существующим Web-аккаунтом по короткому коду — P1-B.
+- Продукт существует только как Telegram Mini App; Login Widget и связка
+  Telegram с Web-аккаунтом отложены на неопределённый срок (`ADR-007`).
+  `/setdomain` уже выполнен.
 - IP rate limit хранится в памяти процесса; для нескольких инстансов нужен
   общий store.
-- Live staging развёрнут; остались `/setdomain` для Login Widget и проверка на
-  реальных iOS Safari и Android Chrome.
-- PWA и Telegram не проверены на реальных iOS Safari и Android Chrome.
+- Live staging развёрнут; осталась проверка TMA на реальных iOS Safari и
+  Android Chrome.
+- PWA не проверена на реальных устройствах; alpha-путь — Telegram Mini App.
 
 ## Проверки
 
@@ -367,7 +384,7 @@ P1-A: [`docs/testing/p1-alpha-readiness-2026-10-25.md`](docs/testing/p1-alpha-re
 
 ## Деплой
 
-Текущий alpha-staging — native-контур: Node 24 + Next.js под systemd,
+Текущий staging — native-контур: Node 24 + Next.js под systemd,
 PostgreSQL 17 на loopback, Nginx vhost за HAProxy SNI, Let's Encrypt,
 ежедневный `pg_dump` и restore-drill. Код, env и бэкапы — в `/opt/chiron`;
 подробности и команды обновления —
