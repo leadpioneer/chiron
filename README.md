@@ -189,7 +189,7 @@ npm test               # 144 доменных теста, включая 50 gold
 npm run typecheck      # TypeScript во всех workspace
 npm run build          # production build Next.js
 npm run test:cycle     # полный симулятор 28 и 23 сессий на чистой test-БД
-npm run test:e2e       # Playwright: 42 сценария
+npm run test:e2e       # Playwright: 43 сценария
 npm run test:llm-eval  # метрики LLM на 50 golden-кейсах (локальный парсер)
 npm run db:test:prepare # создать/мигрировать/засеять chiron_test
 npm run db:cleanup     # удалить старые использованные magic links

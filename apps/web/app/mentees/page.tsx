@@ -6,6 +6,7 @@ import {
   listMentees,
   listUnlinkedTelegramIds,
 } from "@/src/lib/mentee-service";
+import { SubjectSwitchButton } from "@/src/components/SubjectSwitchButton";
 
 export const metadata = { title: "Подопечные" };
 
@@ -72,16 +73,10 @@ export default async function MenteesPage({
                     </p>
                   ) : null}
                 </div>
-                <form action="/api/subject" method="post">
-                  <input
-                    type="hidden"
-                    name="menteeUserId"
-                    value={mentee.id}
-                  />
-                  <button className="btn btn-primary" type="submit">
-                    Открыть дневник
-                  </button>
-                </form>
+                <SubjectSwitchButton
+                  menteeUserId={mentee.id}
+                  label="Открыть дневник"
+                />
               </div>
 
               <div className="row-between wrap" style={{ marginTop: 14 }}>

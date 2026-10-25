@@ -5,7 +5,6 @@ import {
   linkExistingMenteeByTelegramId,
   MenteeError,
 } from "@/src/lib/mentee-service";
-import { setSubjectCookie } from "@/src/lib/subject";
 
 function isFormRequest(request: Request): boolean {
   const contentType = request.headers.get("content-type") ?? "";
@@ -45,9 +44,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       viewer.id,
       telegramId,
     );
-    await setSubjectCookie(mentee.id);
     return isFormRequest(request)
-      ? NextResponse.redirect(new URL("/today", request.url), 303)
+      ? NextResponse.redirect(new URL("/mentees", request.url), 303)
       : NextResponse.json({ ok: true, mentee });
   } catch (error) {
     if (error instanceof MenteeError) {

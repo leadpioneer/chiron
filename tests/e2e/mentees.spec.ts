@@ -191,6 +191,46 @@ test.describe("coach mode", () => {
     }
   });
 
+  test("switches subject without a manual reload", async ({ page }) => {
+    const sql = createDb();
+    try {
+      await onboard(page, { sql });
+      const create = await page.request.post("/api/mentees", {
+        data: { displayName: "Даша" },
+      });
+      const created = (await create.json()) as {
+        mentee: { id: string };
+      };
+      const onboarding = await page.request.post("/api/onboarding", {
+        data: {
+          ...onboardingInput("EVERY_OTHER_DAY"),
+          displayName: "Даша",
+        },
+      });
+      expect(onboarding.status()).toBe(200);
+      await page.request.post("/api/subject", {
+        data: { menteeUserId: "" },
+      });
+
+      await page.goto("/mentees");
+      await page
+        .getByRole("button", { name: "Открыть дневник", exact: true })
+        .click();
+      await page.waitForURL("**/today");
+      await expect(page.getByText("Дневник Даша")).toBeVisible();
+
+      await page.getByRole("button", { name: "Вернуться в мой дневник" }).click();
+      await expect(page.getByText("Дневник Даша")).toHaveCount(0);
+      await expect(page.getByText("Дневник Даша")).not.toBeVisible();
+
+      const subject = await page.request.get("/api/mentees");
+      expect(subject.ok()).toBeTruthy();
+      expect(created.mentee.id).toBeTruthy();
+    } finally {
+      await sql.end();
+    }
+  });
+
   test("rejects an invalid subject cookie", async ({ page }) => {
     const sql = createDb();
     try {
