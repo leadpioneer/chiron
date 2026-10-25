@@ -354,8 +354,8 @@ violations. Гейт: red recall 100%, yellow ≥95%, numeric ≥98%, invalid JS
   `/setdomain` уже выполнен.
 - IP rate limit хранится в памяти процесса; для нескольких инстансов нужен
   общий store.
-- Live staging развёрнут; осталась проверка TMA на реальных iOS Safari и
-  Android Chrome.
+- Live staging развёрнут; TMA проверена на iPhone 25.10.2026, Android не
+  проверен.
 - PWA не проверена на реальных устройствах; alpha-путь — Telegram Mini App.
 
 ## Проверки

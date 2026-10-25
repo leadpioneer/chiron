@@ -225,7 +225,7 @@ curl -fsS https://$DOMAIN/api/health
 - Связка Telegram с существующим Web-аккаунтом отложена на неопределённый
   срок; alpha-путь — только Telegram Mini App
   ([`ADR-007`](../decisions/ADR-007-tma-only-and-personal-data-scope.md)).
-- PWA и Telegram не проверены на реальных iOS/Android в этой сессии.
+- TMA проверена на iPhone 25.10.2026; Android не проверен.
 - Некоммерческий статус и границы данных зафиксированы в
   [`ADR-004`](../decisions/ADR-004-non-commercial-and-data-scope.md). Для
   личного использования (автор и его близкий человек — партнёрша) действует

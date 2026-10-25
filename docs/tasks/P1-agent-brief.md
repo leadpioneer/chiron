@@ -3,8 +3,8 @@
 - **Статус:** P1-A реализован и развёрнут на staging 25.10.2026; CI зелёный
   ([run 40143095774](https://github.com/leadpioneer/chiron/actions/runs/40143095774)).
   Живой LLM eval и restore-drill прошли. P1-B: деплой `61e84e6` выполнен
-  25.10.2026, `/api/health` отвечает `ok`; осталось проверить TMA на реальных
-  iOS/Android и провести онбординг партнёрши. Внешние алерты не нужны.
+  25.10.2026, `/api/health` отвечает `ok`; TMA проверена на iPhone, Android
+  не проверен. Осталось провести онбординг партнёрши. Внешние алерты не нужны.
   Login Widget и связка Telegram/Web отложены на неопределённый срок по
   [`ADR-007`](../decisions/ADR-007-tma-only-and-personal-data-scope.md);
   `/setdomain` уже выполнен.
@@ -42,7 +42,7 @@ P1-B требует решений и доступов владельца.
 
 ## P1-B — личный контур
 
-1. Проверка TMA на реальных iOS Safari и Android Chrome. Login Widget и
+1. TMA на iPhone проверена 25.10.2026; Android не проверен. Login Widget и
    связка Telegram с Web-аккаунтом не входят в P1-B; `/setdomain` уже
    выполнен.
 2. Партнёрша уже в `TELEGRAM_ALLOWLIST` (2 записи на staging); провести её
