@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb, identities, magicLinks, users } from "@chiron/db";
 import { createSession } from "@/src/lib/auth";
+import { clearSubjectCookie } from "@/src/lib/subject";
 
 function loginError(request: Request, code: string): NextResponse {
   return NextResponse.redirect(
@@ -76,6 +77,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .onConflictDoNothing();
 
   await createSession(user.id);
+  await clearSubjectCookie();
   return NextResponse.redirect(new URL("/", request.url), {
     headers: { "cache-control": "no-store" },
   });

@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/src/lib/auth";
+import { requireSubject } from "@/src/lib/subject";
 import { getActiveCycle } from "@/src/lib/plan-service";
 
 export default async function HomePage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const cycle = await getActiveCycle(user.id);
+  const { subject } = await requireSubject();
+  const cycle = await getActiveCycle(subject.id);
   redirect(cycle ? "/today" : "/onboarding");
 }

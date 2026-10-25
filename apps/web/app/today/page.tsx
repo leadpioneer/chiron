@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { count, desc, eq } from "drizzle-orm";
 import { getDb, sessions, wellnessChecks } from "@chiron/db";
 import { daysBetween } from "@chiron/core";
-import { getCurrentUser } from "@/src/lib/auth";
+import { requireSubject } from "@/src/lib/subject";
 import {
   getActiveCycle,
   getNextSession,
@@ -48,26 +48,25 @@ function calibrationLabel(item: {
 }
 
 export default async function TodayPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const cycle = await getActiveCycle(user.id);
+  const { subject } = await requireSubject();
+  const cycle = await getActiveCycle(subject.id);
   if (!cycle) redirect("/onboarding");
 
   const [nextSession, template, pending, wellnessRows, latestReschedule] =
     await Promise.all([
       getNextSession(cycle.id),
       getTemplateForCycle(cycle.templateId),
-      getPendingRecommendations(user.id),
+      getPendingRecommendations(subject.id),
       getDb()
         .select({
           recordedAt: wellnessChecks.recordedAt,
           createdAt: wellnessChecks.createdAt,
         })
         .from(wellnessChecks)
-        .where(eq(wellnessChecks.userId, user.id))
+        .where(eq(wellnessChecks.userId, subject.id))
         .orderBy(desc(wellnessChecks.createdAt))
         .limit(1),
-      getLatestReschedule(user.id, cycle.id),
+      getLatestReschedule(subject.id, cycle.id),
     ]);
   const lastWellness = wellnessRows[0];
   const wellnessGap = lastWellness
@@ -108,12 +107,12 @@ export default async function TodayPage() {
     );
   }
 
-  const view = await getSessionView(nextSession.id, user.id);
+  const view = await getSessionView(nextSession.id, subject.id);
   if (!view) redirect("/today");
 
   const pause =
     nextSession.status === "PLANNED"
-      ? await getPauseStateForUser(user.id, cycle)
+      ? await getPauseStateForUser(subject.id, cycle)
       : null;
   const reviewState = pause ? toCycleReviewState(pause) : null;
   const reviewRequired = reviewState?.required ?? false;
@@ -121,7 +120,7 @@ export default async function TodayPage() {
     nextSession.status === "PLANNED" &&
     !nextSession.isReturn &&
     (pause?.phase === "RETURN_1" || pause?.phase === "RETURN_2")
-      ? await getReturnPreview(user.id, nextSession.id)
+      ? await getReturnPreview(subject.id, nextSession.id)
       : null;
   const returnRequired = returnPreview !== null;
 

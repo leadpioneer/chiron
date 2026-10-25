@@ -78,7 +78,7 @@ export async function reviewCycle(
   userId: string,
   cycleId: string,
   input: { action: CycleReviewAction; reason: CycleReviewReason },
-  options: { today?: string } = {},
+  options: { today?: string; actorUserId?: string } = {},
 ): Promise<CycleReviewResult> {
   const db = getDb();
   const today = options.today ?? todayIso();
@@ -137,6 +137,7 @@ export async function reviewCycle(
     if (input.action === "STOP") {
       await tx.insert(auditEvents).values({
         userId,
+        actorUserId: options.actorUserId ?? userId,
         entity: "training_cycle",
         entityId: locked.id,
         eventType: "CYCLE_REVIEWED",
@@ -398,6 +399,7 @@ export async function reviewCycle(
 
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: options.actorUserId ?? userId,
       entity: "training_cycle",
       entityId: locked.id,
       eventType: "CYCLE_REVIEWED",
@@ -412,6 +414,7 @@ export async function reviewCycle(
     });
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: options.actorUserId ?? userId,
       entity: "training_cycle",
       entityId: newCycle.id,
       eventType: "CYCLE_REBUILT",

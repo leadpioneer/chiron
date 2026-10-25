@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { BottomNav } from "@/src/components/BottomNav";
 import { ServiceWorker } from "@/src/components/ServiceWorker";
+import { SubjectBar } from "@/src/components/SubjectBar";
 import { TelegramBoot } from "@/src/components/TelegramBoot";
 import { TopNav } from "@/src/components/TopNav";
 import "./globals.css";
@@ -48,6 +49,7 @@ export default function RootLayout({
           strategy="beforeInteractive"
         />
         <TopNav />
+        <SubjectBar />
         <main className="shell">{children}</main>
         <BottomNav />
         <ServiceWorker />

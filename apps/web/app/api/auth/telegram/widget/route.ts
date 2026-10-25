@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { telegramWidgetAuthSchema } from "@chiron/contracts";
 import { createSession } from "@/src/lib/auth";
+import { clearSubjectCookie } from "@/src/lib/subject";
 import { apiError, readJson } from "@/src/lib/api";
 import {
   clientIp,
@@ -33,6 +34,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   await createSession(outcome.userId);
+  await clearSubjectCookie();
   return NextResponse.json(
     { ok: true },
     { headers: { "cache-control": "no-store" } },

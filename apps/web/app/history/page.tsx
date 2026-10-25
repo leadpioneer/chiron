@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/src/lib/auth";
+import { requireSubject } from "@/src/lib/subject";
 import { getHistory, type ExerciseHistory } from "@/src/lib/history-service";
 import { formatDateShort, formatWeight } from "@/src/lib/dates";
 
@@ -18,6 +17,8 @@ const AUDIT_LABELS: Record<string, string> = {
   SESSION_RESCHEDULE_UNDONE: "Перенос отменён",
   SESSION_REOPENED: "Тренировка возвращена в работу",
   SET_DELETED: "Подход удалён",
+  MENTEE_CREATED: "Создан подопечный",
+  MENTEE_REVOKED: "Доступ к подопечному отозван",
   PLAN_VERSION_CREATED: "Новая версия плана",
   RECOMMENDATION_REJECTED: "Рекомендация отклонена",
   RECOMMENDATION_ACCEPTED_NO_CHANGE: "Рекомендация принята",
@@ -118,9 +119,8 @@ function loadText(exercise: ExerciseHistory, exposure: ExerciseHistory["exposure
 }
 
 export default async function HistoryPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const history = await getHistory(user.id);
+  const { subject } = await requireSubject();
+  const history = await getHistory(subject.id);
   const sessionIds = new Set(
     history.exercises.flatMap((exercise) =>
       exercise.exposures.map((exposure) => exposure.sessionId),

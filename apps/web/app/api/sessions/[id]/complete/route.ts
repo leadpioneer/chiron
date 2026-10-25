@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { completeSessionSchema } from "@chiron/contracts";
-import { getCurrentUser } from "@/src/lib/auth";
+import { subjectContextForApi, readOnlyResponse } from "@/src/lib/subject";
 import { apiError, readJson } from "@/src/lib/api";
 import {
   createSessionRecommendations,
@@ -11,8 +11,10 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется вход", 401);
+  const subjectContext = await subjectContextForApi();
+  if (subjectContext instanceof NextResponse) return subjectContext;
+  const readOnly = readOnlyResponse(subjectContext);
+  if (readOnly) return readOnly;
   const { id } = await context.params;
 
   const parsed = await readJson(request, completeSessionSchema);
@@ -20,7 +22,8 @@ export async function POST(
 
   try {
     const recommendations = await createSessionRecommendations({
-      userId: user.id,
+      userId: subjectContext.subject.id,
+      actorUserId: subjectContext.viewer.id,
       sessionId: id,
       sessionRpe: parsed.data.sessionRpe,
       comment: parsed.data.comment ?? null,

@@ -50,6 +50,35 @@ export const identities = pgTable(
   ],
 );
 
+export const coachMentees = pgTable(
+  "coach_mentees",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    coachUserId: uuid("coach_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    menteeUserId: uuid("mentee_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("ACTIVE"),
+    permissions: text("permissions").notNull().default("WRITE"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("coach_mentees_pair_idx").on(
+      table.coachUserId,
+      table.menteeUserId,
+    ),
+    index("coach_mentees_coach_idx").on(table.coachUserId, table.status),
+    index("coach_mentees_mentee_idx").on(table.menteeUserId),
+  ],
+);
+
 export const athleteProfiles = pgTable(
   "athlete_profiles",
   {
@@ -465,6 +494,9 @@ export const auditEvents = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     entity: text("entity").notNull(),
     entityId: text("entity_id").notNull(),
     eventType: text("event_type").notNull(),

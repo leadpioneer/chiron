@@ -1,6 +1,6 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import type { LoadMode } from "@chiron/contracts";
-import { getCurrentUser } from "@/src/lib/auth";
+import { requireSubject } from "@/src/lib/subject";
 import { getSessionView } from "@/src/lib/plan-service";
 import { todayIso } from "@/src/lib/dates";
 import { SessionLogger } from "@/src/components/SessionLogger";
@@ -12,10 +12,9 @@ export default async function SessionPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  const { subject } = await requireSubject();
   const { id } = await params;
-  const view = await getSessionView(id, user.id);
+  const view = await getSessionView(id, subject.id);
   if (!view) notFound();
 
   const clientView = {

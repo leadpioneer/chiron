@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/src/lib/auth";
+import { subjectContextForApi, readOnlyResponse } from "@/src/lib/subject";
 import { apiError } from "@/src/lib/api";
 import { prepareReturn, ReturnError } from "@/src/lib/return-service";
 
@@ -7,12 +7,18 @@ export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется вход", 401);
+  const subjectContext = await subjectContextForApi();
+  if (subjectContext instanceof NextResponse) return subjectContext;
+  const readOnly = readOnlyResponse(subjectContext);
+  if (readOnly) return readOnly;
   const { id } = await context.params;
 
   try {
-    const result = await prepareReturn(user.id, id);
+    const result = await prepareReturn(
+      subjectContext.subject.id,
+      id,
+      { actorUserId: subjectContext.viewer.id },
+    );
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     if (error instanceof ReturnError) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/src/lib/auth";
+import { subjectContextForApi, readOnlyResponse } from "@/src/lib/subject";
 import { apiError } from "@/src/lib/api";
 import {
   advanceCycle,
@@ -8,11 +8,16 @@ import {
 } from "@/src/lib/plan-service";
 
 export async function POST(): Promise<NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется вход", 401);
+  const context = await subjectContextForApi();
+  if (context instanceof NextResponse) return context;
+  const readOnly = readOnlyResponse(context);
+  if (readOnly) return readOnly;
 
   try {
-    const cycleId = await advanceCycle(user.id);
+    const cycleId = await advanceCycle(
+      context.subject.id,
+      { actorUserId: context.viewer.id },
+    );
     return NextResponse.json({ ok: true, cycleId });
   } catch (error) {
     if (error instanceof CycleNotFinishedError) {

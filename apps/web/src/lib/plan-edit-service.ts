@@ -109,6 +109,7 @@ export async function replacePrescriptionExercise(
   userId: string,
   prescriptionId: string,
   newVariantId: string,
+  actorUserId?: string,
 ): Promise<ReplaceExerciseResult> {
   const db = getDb();
   const cycle = await getActiveCycle(userId);
@@ -498,6 +499,7 @@ export async function replacePrescriptionExercise(
 
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: actorUserId ?? userId,
       entity: "plan_version",
       entityId: newVersionId,
       eventType: "PLAN_VERSION_CREATED",

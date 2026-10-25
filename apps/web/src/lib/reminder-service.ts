@@ -129,6 +129,7 @@ export async function sendDueReminders(
       });
       await db.insert(auditEvents).values({
         userId: item.userId,
+        actorUserId: item.userId,
         entity: "session",
         entityId: item.sessionId,
         eventType: "REMINDER_SENT",

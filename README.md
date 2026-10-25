@@ -60,6 +60,9 @@ LLM. Эти сведения относятся к персональным, п�
 - Исправления: удаление сохранённого подхода до завершения и возврат последней
   завершённой тренировки в работу с пересчётом рекомендаций; при уже принятом
   решении или safety-событии изменения блокируются.
+- Подопечные: отдельный профиль, переключение дневника в шапке, заполнение и
+  правка тренировок, аудит `actor_user_id` / `user_id`. Telegram ID можно
+  привязать при создании, чтобы подопечный вошёл в тот же профиль.
 - Возврат после паузы 8–27 дней: `RETURN_1` (−5%, RIR 3) или `RETURN_2`
   (−10%, RIR 4 → 3) с подтверждением и отдельной версией плана.
 - Пересмотр цикла после паузы ≥28 дней или safety-паузы: пересборка на 8 недель
@@ -157,7 +160,7 @@ npm run dev
 | `ALPHA_EMAIL_ALLOWLIST` | точные email или `*@domain`; пустой список блокирует новые email-регистрации |
 | `TELEGRAM_BOT_TOKEN` | проверка `initData` Mini App и Login Widget |
 | `TELEGRAM_BOT_USERNAME` | username бота для Login Widget, без `@` |
-| `TELEGRAM_ALLOWLIST` | username/id, которым разрешена регистрация через Telegram |
+| `TELEGRAM_ALLOWLIST` | username/id, которым разрешена регистрация через Telegram; свободные числовые ID предлагаются при создании подопечного |
 | `TELEGRAM_WEBHOOK_SECRET` | секрет webhook для inline-кнопок |
 | `TELEGRAM_PROXY_URL` | HTTP-прокси для исходящих вызовов Telegram API |
 | `TELEGRAM_API_TIMEOUT_MS` | таймаут Telegram API, по умолчанию 15000 |
@@ -185,7 +188,7 @@ npm test               # 144 доменных теста, включая 50 gold
 npm run typecheck      # TypeScript во всех workspace
 npm run build          # production build Next.js
 npm run test:cycle     # полный симулятор 28 и 23 сессий на чистой test-БД
-npm run test:e2e       # Playwright: 35 сценариев
+npm run test:e2e       # Playwright: 41 сценарий
 npm run test:llm-eval  # метрики LLM на 50 golden-кейсах (локальный парсер)
 npm run db:test:prepare # создать/мигрировать/засеять chiron_test
 npm run db:cleanup     # удалить старые использованные magic links

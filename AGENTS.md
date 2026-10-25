@@ -18,6 +18,7 @@ Read `docs/decisions/v1-decisions.md` before changing product behaviour.
 7. Every recommendation, parse and plan change stores rules, prompt, model and schema versions.
 8. No diagnosis, no "this pain is safe", no "the app prevented injury", no guaranteed results.
 9. An LLM request carries only the system prompt and workout text. It never includes `userId`, email, Telegram id, display name, session cookie or other identifiers.
+10. Every mutation records both subject (`user_id`) and actor (`actor_user_id`). A coach may act only through an active `coach_mentees` link; account/auth actions stay actor-only.
 
 ## Architecture
 

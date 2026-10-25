@@ -311,7 +311,7 @@ export interface ReturnResult {
 export async function prepareReturn(
   userId: string,
   sessionId: string,
-  options: { today?: string } = {},
+  options: { today?: string; actorUserId?: string } = {},
 ): Promise<ReturnResult> {
   const db = getDb();
   const today = options.today ?? todayIso();
@@ -685,6 +685,7 @@ export async function prepareReturn(
 
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: options.actorUserId ?? userId,
       entity: "session",
       entityId: sessionId,
       eventType: "RETURN_PREPARED",

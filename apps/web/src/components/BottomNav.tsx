@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-function Glyph({ name }: { name: "today" | "history" | "settings" }) {
+function Glyph({ name }: { name: "today" | "history" | "mentees" | "settings" }) {
   if (name === "today") {
     return (
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -21,6 +21,18 @@ function Glyph({ name }: { name: "today" | "history" | "settings" }) {
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path
           d="M4 19V5M4 19h16M8 15v-4M12 15V7M16 15v-6"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+  if (name === "mentees") {
+    return (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path
+          d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 20c0-3 2.7-5 6-5s6 2 6 5M15 15.5c2.8.2 5 2.2 5 4.5"
           stroke="currentColor"
           strokeWidth="1.7"
           strokeLinecap="round"
@@ -52,6 +64,7 @@ export function BottomNav() {
   const items = [
     { href: "/today", label: "Сегодня", glyph: "today" as const },
     { href: "/history", label: "История", glyph: "history" as const },
+    { href: "/mentees", label: "Люди", glyph: "mentees" as const },
     { href: "/settings", label: "Настройки", glyph: "settings" as const },
   ];
 

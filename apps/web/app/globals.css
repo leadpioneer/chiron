@@ -881,6 +881,29 @@ button {
   margin: 18px 0;
 }
 
+.subject-bar {
+  background: var(--card-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.subject-bar-inner {
+  width: min(1040px, 100%);
+  margin: 0 auto;
+  padding: 10px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 720px) {
+  .subject-bar-inner {
+    padding: 10px 15px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .bottom-nav {
   display: none;
 }
@@ -958,7 +981,7 @@ button {
     bottom: calc(12px + env(safe-area-inset-bottom));
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 6px;
     padding: 7px;
     border: 1px solid var(--line);

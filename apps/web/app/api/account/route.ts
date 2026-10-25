@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, clearSession } from "@/src/lib/auth";
 import { apiError } from "@/src/lib/api";
 import { softDeleteAccount } from "@/src/lib/export-service";
+import { clearSubjectCookie } from "@/src/lib/subject";
 
 export async function DELETE(): Promise<NextResponse> {
   const user = await getCurrentUser();
@@ -9,5 +10,6 @@ export async function DELETE(): Promise<NextResponse> {
 
   await softDeleteAccount(user.id);
   await clearSession();
+  await clearSubjectCookie();
   return NextResponse.json({ ok: true });
 }

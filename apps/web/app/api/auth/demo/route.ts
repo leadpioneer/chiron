@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { getDb, users } from "@chiron/db";
 import { createSession } from "@/src/lib/auth";
+import { clearSubjectCookie } from "@/src/lib/subject";
 import { apiError } from "@/src/lib/api";
 import { authDevModeEnabled } from "@/src/lib/config";
 
@@ -27,5 +28,6 @@ export async function POST(): Promise<NextResponse> {
   if (!user) return apiError("USER_ERROR", "Не удалось создать демо-пользователя", 500);
 
   await createSession(user.id);
+  await clearSubjectCookie();
   return NextResponse.json({ ok: true });
 }

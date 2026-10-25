@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { setPerformanceSchema } from "@chiron/contracts";
-import { getCurrentUser } from "@/src/lib/auth";
+import { subjectContextForApi, readOnlyResponse } from "@/src/lib/subject";
 import { apiError, readJson } from "@/src/lib/api";
 import {
   deleteSet,
@@ -12,15 +12,22 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется вход", 401);
+  const subjectContext = await subjectContextForApi();
+  if (subjectContext instanceof NextResponse) return subjectContext;
+  const readOnly = readOnlyResponse(subjectContext);
+  if (readOnly) return readOnly;
   const { id } = await context.params;
 
   const parsed = await readJson(request, setPerformanceSchema);
   if (!parsed.ok) return parsed.response;
 
   try {
-    const row = await upsertSet(user.id, id, parsed.data);
+    const row = await upsertSet(
+      subjectContext.subject.id,
+      id,
+      parsed.data,
+      subjectContext.viewer.id,
+    );
     return NextResponse.json({ ok: true, set: row });
   } catch (error) {
     if (error instanceof SessionError) {
@@ -35,8 +42,10 @@ export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется вход", 401);
+  const subjectContext = await subjectContextForApi();
+  if (subjectContext instanceof NextResponse) return subjectContext;
+  const readOnly = readOnlyResponse(subjectContext);
+  if (readOnly) return readOnly;
   const { id } = await context.params;
 
   const clientSetId = new URL(request.url).searchParams.get("clientSetId");
@@ -50,7 +59,12 @@ export async function DELETE(
   }
 
   try {
-    await deleteSet(user.id, id, clientSetId);
+    await deleteSet(
+      subjectContext.subject.id,
+      id,
+      clientSetId,
+      subjectContext.viewer.id,
+    );
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof SessionError) {

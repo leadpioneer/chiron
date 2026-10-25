@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { athleteProfiles, getDb } from "@chiron/db";
-import { getCurrentUser } from "@/src/lib/auth";
+import { requireSubject } from "@/src/lib/subject";
 import { getActiveCycle } from "@/src/lib/plan-service";
 import { formatDate } from "@/src/lib/dates";
 import { SettingsActions } from "@/src/components/SettingsActions";
@@ -22,34 +21,36 @@ const GOAL_LABELS: Record<string, string> = {
 };
 
 export default async function SettingsPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const cycle = await getActiveCycle(user.id);
+  const { subject, isSelf } = await requireSubject();
+  const cycle = await getActiveCycle(subject.id);
   const profileRows = await getDb()
     .select()
     .from(athleteProfiles)
-    .where(eq(athleteProfiles.userId, user.id))
+    .where(eq(athleteProfiles.userId, subject.id))
     .limit(1);
   const profile = profileRows[0];
 
   return (
     <div>
-      <p className="eyebrow">Аккаунт</p>
+      <p className="eyebrow">{isSelf ? "Аккаунт" : "Подопечный"}</p>
       <h1 className="page-title">Настройки</h1>
       <p className="subtitle">
-        Данные принадлежат вам. Экспорт и удаление доступны без переписки с
-        поддержкой.
+        {isSelf
+          ? "Данные принадлежат вам. Экспорт и удаление доступны без переписки с поддержкой."
+          : "Профиль подопечного. Тренировочные данные можно смотреть и менять; удаление аккаунта доступно только владельцу."}
       </p>
 
       <section className="card">
         <div className="card-head">
           <div>
-            <h2 className="card-title">{user.displayName}</h2>
+            <h2 className="card-title">{subject.displayName}</h2>
             <p className="small muted" style={{ margin: "4px 0 0" }}>
-              {user.email ?? "Вход через Telegram"} · язык {user.locale}
+              {subject.email ??
+                (isSelf ? "Вход через Telegram" : "Профиль без входа")}{" "}
+              · язык {subject.locale}
             </p>
           </div>
-          <span className="badge">V1 alpha</span>
+          <span className="badge">{isSelf ? "V1 alpha" : "Подопечный"}</span>
         </div>
 
         <div className="grid grid-3">
@@ -105,7 +106,24 @@ export default async function SettingsPage() {
           </div>
         </div>
 
-        {cycle ? (
+      {isSelf ? (
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <h2 className="card-title">Подопечные</h2>
+              <p className="small muted" style={{ margin: "4px 0 0" }}>
+                Открывайте дневники людей, которых вы ведёте, и заполняйте их
+                тренировки.
+              </p>
+            </div>
+          </div>
+          <Link className="btn" href="/mentees">
+            Перейти к подопечным
+          </Link>
+        </section>
+      ) : null}
+
+      {cycle ? (
           <p className="small muted" style={{ marginTop: 14 }}>
             Цикл: {formatDate(cycle.startDate)} — {formatDate(cycle.endDate)}.
             Изменения плана — только через подтверждение.
@@ -139,7 +157,7 @@ export default async function SettingsPage() {
             </p>
           </div>
         </div>
-        <SettingsActions />
+        <SettingsActions canDelete={isSelf} />
       </section>
 
       <section className="card">

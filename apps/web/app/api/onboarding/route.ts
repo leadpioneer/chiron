@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { onboardingSchema } from "@chiron/contracts";
-import { getCurrentUser } from "@/src/lib/auth";
+import { subjectContextForApi, readOnlyResponse } from "@/src/lib/subject";
 import { apiError, readJson } from "@/src/lib/api";
 import {
   createCycleForUser,
@@ -8,14 +8,20 @@ import {
 } from "@/src/lib/plan-service";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется вход", 401);
+  const context = await subjectContextForApi();
+  if (context instanceof NextResponse) return context;
+  const readOnly = readOnlyResponse(context);
+  if (readOnly) return readOnly;
 
   const parsed = await readJson(request, onboardingSchema);
   if (!parsed.ok) return parsed.response;
 
   try {
-    const cycleId = await createCycleForUser(user.id, parsed.data);
+    const cycleId = await createCycleForUser(
+      context.subject.id,
+      parsed.data,
+      { actorUserId: context.viewer.id },
+    );
     return NextResponse.json({ ok: true, cycleId });
   } catch (error) {
     if (error instanceof CycleAlreadyActiveError) {

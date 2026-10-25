@@ -37,7 +37,7 @@ function ensureActiveCycle(view: Awaited<ReturnType<typeof getSessionView>>) {
 export async function startSession(
   userId: string,
   sessionId: string,
-  options: { today?: string } = {},
+  options: { today?: string; actorUserId?: string } = {},
 ): Promise<void> {
   const view = await getSessionView(sessionId, userId);
   if (!view) {
@@ -84,6 +84,7 @@ export async function startSession(
       .where(eq(sessions.id, sessionId));
     await getDb().insert(auditEvents).values({
       userId,
+      actorUserId: options.actorUserId ?? userId,
       entity: "session",
       entityId: sessionId,
       eventType: "SESSION_STARTED",
@@ -96,6 +97,7 @@ export async function startSession(
 export async function reopenSession(
   userId: string,
   sessionId: string,
+  actorUserId?: string,
 ): Promise<void> {
   const view = await getSessionView(sessionId, userId);
   if (!view) {
@@ -205,6 +207,7 @@ export async function reopenSession(
 
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: actorUserId ?? userId,
       entity: "session",
       entityId: sessionId,
       eventType: "SESSION_REOPENED",
@@ -221,6 +224,7 @@ export async function upsertSet(
   userId: string,
   sessionId: string,
   input: SetPerformanceInput,
+  _actorUserId?: string,
 ): Promise<typeof setPerformances.$inferSelect> {
   const view = await getSessionView(sessionId, userId);
   if (!view) {
@@ -295,6 +299,7 @@ export async function deleteSet(
   userId: string,
   sessionId: string,
   clientSetId: string,
+  actorUserId?: string,
 ): Promise<void> {
   const view = await getSessionView(sessionId, userId);
   if (!view) {
@@ -328,6 +333,7 @@ export async function deleteSet(
 
   await getDb().insert(auditEvents).values({
     userId,
+    actorUserId: actorUserId ?? userId,
     entity: "session",
     entityId: sessionId,
     eventType: "SET_DELETED",
@@ -347,6 +353,7 @@ export async function saveWellness(
   userId: string,
   sessionId: string,
   input: WellnessInput,
+  _actorUserId?: string,
 ): Promise<void> {
   const view = await getSessionView(sessionId, userId);
   if (!view) {
@@ -376,6 +383,7 @@ export async function markSessionSkipped(
   sessionId: string,
   reason: "NO_TIME" | "ILLNESS" | "EQUIPMENT" | "OTHER",
   comment: string | null = null,
+  actorUserId?: string,
 ): Promise<void> {
   const view = await getSessionView(sessionId, userId);
   if (!view) {
@@ -398,6 +406,7 @@ export async function markSessionSkipped(
     .where(and(eq(sessions.id, sessionId), eq(sessions.status, "PLANNED")));
   await getDb().insert(auditEvents).values({
     userId,
+    actorUserId: actorUserId ?? userId,
     entity: "session",
     entityId: sessionId,
     eventType: "SESSION_SKIPPED",

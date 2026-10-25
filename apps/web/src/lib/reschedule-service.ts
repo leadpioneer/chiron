@@ -48,7 +48,7 @@ export async function rescheduleSession(
   userId: string,
   sessionId: string,
   input: { newDate: string; mode: RescheduleMode },
-  options: { today?: string } = {},
+  options: { today?: string; actorUserId?: string } = {},
 ): Promise<RescheduleResult> {
   const db = getDb();
   const today = options.today ?? todayIso();
@@ -158,6 +158,7 @@ export async function rescheduleSession(
 
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: options.actorUserId ?? userId,
       entity: "session",
       entityId: sessionId,
       eventType: "SESSION_RESCHEDULED",
@@ -313,6 +314,7 @@ export interface UndoRescheduleResult {
 export async function undoLastReschedule(
   userId: string,
   sessionId: string,
+  actorUserId?: string,
 ): Promise<UndoRescheduleResult> {
   const db = getDb();
 
@@ -505,6 +507,7 @@ export async function undoLastReschedule(
 
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: actorUserId ?? userId,
       entity: "session",
       entityId: sessionId,
       eventType: "SESSION_RESCHEDULE_UNDONE",

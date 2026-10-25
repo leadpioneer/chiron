@@ -120,7 +120,7 @@ export async function getNextSession(
 export async function createCycleForUser(
   userId: string,
   input: OnboardingInput,
-  options: { today?: string } = {},
+  options: { today?: string; actorUserId?: string } = {},
 ): Promise<string> {
   const db = getDb();
   const existing = await getActiveCycle(userId);
@@ -353,6 +353,7 @@ export async function createCycleForUser(
 
     await tx.insert(auditEvents).values({
       userId,
+      actorUserId: options.actorUserId ?? userId,
       entity: "training_cycle",
       entityId: cycle.id,
       eventType: "CYCLE_CREATED",
@@ -690,7 +691,7 @@ export async function getTemplateForCycle(
 
 export async function advanceCycle(
   userId: string,
-  options: { today?: string } = {},
+  options: { today?: string; actorUserId?: string } = {},
 ): Promise<string> {
   const db = getDb();
   const today = options.today ?? todayIso();
@@ -836,7 +837,7 @@ export async function advanceCycle(
         squat: primaryLoad("squat", "weight"),
         press: primaryLoad("press", "weight"),
       },
-    }, { today });
+    }, { today, actorUserId: options.actorUserId });
   } catch (error) {
     // Put the old cycle back if the new one could not be created.
     await db
@@ -857,6 +858,7 @@ export async function advanceCycle(
     );
   await db.insert(auditEvents).values({
     userId,
+    actorUserId: options.actorUserId ?? userId,
     entity: "training_cycle",
     entityId: cycle.id,
     eventType: "CYCLE_CLOSED",

@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/src/lib/auth";
-import { apiError } from "@/src/lib/api";
+import { subjectContextForApi } from "@/src/lib/subject";
 import { exportUserData } from "@/src/lib/export-service";
 
 export async function GET(): Promise<NextResponse> {
-  const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется вход", 401);
+  const context = await subjectContextForApi();
+  if (context instanceof NextResponse) return context;
 
-  const data = await exportUserData(user.id);
+  const data = await exportUserData(context.subject.id);
   return new NextResponse(JSON.stringify(data, null, 2), {
     headers: {
       "content-type": "application/json; charset=utf-8",

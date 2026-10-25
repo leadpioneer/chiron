@@ -1,15 +1,13 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/src/lib/auth";
+import { requireSubject } from "@/src/lib/subject";
 import { getPendingRecommendations } from "@/src/lib/recommendation-service";
 import { RecommendationCard } from "@/src/components/RecommendationCard";
 
 export const metadata = { title: "Предложения" };
 
 export default async function RecommendationsPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  const pending = await getPendingRecommendations(user.id);
+  const { subject } = await requireSubject();
+  const pending = await getPendingRecommendations(subject.id);
 
   const serialized = pending.map((item) => ({
     ...item,

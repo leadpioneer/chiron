@@ -262,6 +262,7 @@ export async function createSessionRecommendations(
     sessionRpe: SessionRpe;
     comment: string | null;
     actualDate?: string;
+    actorUserId?: string;
   },
   options: { today?: string } = {},
 ): Promise<RecommendationView[]> {
@@ -489,6 +490,7 @@ export async function createSessionRecommendations(
 
     await tx.insert(auditEvents).values({
       userId: input.userId,
+      actorUserId: input.actorUserId ?? input.userId,
       entity: "session",
       entityId: input.sessionId,
       eventType: "SESSION_COMPLETED",
@@ -619,6 +621,7 @@ function ensureEditableChange(
 
 export async function applyDecision(input: {
   userId: string;
+  actorUserId?: string;
   recommendationId: string;
   decision: DecisionInput;
 }): Promise<{ outcome: string; planVersionId: string | null }> {
@@ -688,6 +691,7 @@ export async function applyDecision(input: {
         .where(eq(recommendations.id, found.recommendation.id));
       await tx.insert(auditEvents).values({
         userId: input.userId,
+        actorUserId: input.actorUserId ?? input.userId,
         entity: "recommendation",
         entityId: found.recommendation.id,
         eventType: "RECOMMENDATION_REJECTED",
@@ -724,6 +728,7 @@ export async function applyDecision(input: {
         .where(eq(recommendations.id, found.recommendation.id));
       await tx.insert(auditEvents).values({
         userId: input.userId,
+        actorUserId: input.actorUserId ?? input.userId,
         entity: "recommendation",
         entityId: found.recommendation.id,
         eventType: "SAFETY_ACKNOWLEDGED",
@@ -755,6 +760,7 @@ export async function applyDecision(input: {
         .where(eq(recommendations.id, found.recommendation.id));
       await tx.insert(auditEvents).values({
         userId: input.userId,
+        actorUserId: input.actorUserId ?? input.userId,
         entity: "recommendation",
         entityId: found.recommendation.id,
         eventType: "RECOMMENDATION_ACCEPTED_NO_CHANGE",
@@ -1014,6 +1020,7 @@ export async function applyDecision(input: {
 
     await tx.insert(auditEvents).values({
       userId: input.userId,
+      actorUserId: input.actorUserId ?? input.userId,
       entity: "plan_version",
       entityId: newVersionId,
       eventType: "PLAN_VERSION_CREATED",
