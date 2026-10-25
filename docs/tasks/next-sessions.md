@@ -10,8 +10,9 @@
 [`leadpioneer/chiron`](https://github.com/leadpioneer/chiron), CI зелёный
 ([run 40143095774](https://github.com/leadpioneer/chiron/actions/runs/40143095774)).
 Живой staging, routerai и restore-drill проверены. Следующий шаг — P1-B:
-TMA на реальных устройствах, онбординг партнёрши, деплой и проверка staging.
-Юридический режим — личный контур (автор и партнёрша) по
+TMA на реальных устройствах и онбординг партнёрши. Деплой `61e84e6`
+выполнен 25.10.2026, `/api/health` отвечает `ok`. Юридический режим — личный
+контур (автор и партнёрша) по
 [`ADR-007`](../decisions/ADR-007-tma-only-and-personal-data-scope.md).
 Login Widget и связка Telegram/Web отложены на неопределённый срок;
 `/setdomain` уже выполнен; внешние алерты не нужны.

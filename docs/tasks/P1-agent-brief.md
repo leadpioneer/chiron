@@ -2,8 +2,9 @@
 
 - **Статус:** P1-A реализован и развёрнут на staging 25.10.2026; CI зелёный
   ([run 40143095774](https://github.com/leadpioneer/chiron/actions/runs/40143095774)).
-  Живой LLM eval и restore-drill прошли. P1-B: реальные устройства,
-  alpha-метрики, мониторинг, поддержка и выбор юридического режима.
+  Живой LLM eval и restore-drill прошли. P1-B: деплой `61e84e6` выполнен
+  25.10.2026, `/api/health` отвечает `ok`; осталось проверить TMA на реальных
+  iOS/Android и провести онбординг партнёрши. Внешние алерты не нужны.
   Login Widget и связка Telegram/Web отложены на неопределённый срок по
   [`ADR-007`](../decisions/ADR-007-tma-only-and-personal-data-scope.md);
   `/setdomain` уже выполнен.
