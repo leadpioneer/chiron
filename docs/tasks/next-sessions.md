@@ -118,10 +118,11 @@ callback-и забирает long-polling сервис `chiron-telegram-poll` ч
 
 ## P2.5 — Подопечные
 
-Реализовано 25.10.2026: отдельный профиль, `/mentees`, переключение subject,
-плашка возврата, аудит actor/subject, предварительная привязка Telegram.
-См. [`ADR-009`](../decisions/ADR-009-coach-mentee-access.md). Осталось:
-указать Telegram ID Даши, проверить экраны на iPhone.
+Реализовано и задеплоено 25.10.2026 (`2b20812`): отдельный профиль,
+`/mentees`, переключение subject, плашка возврата, аудит actor/subject,
+предварительная привязка Telegram; миграция `0003` применена. См.
+[`ADR-009`](../decisions/ADR-009-coach-mentee-access.md). Осталось: указать
+Telegram ID Даши, проверить экраны на iPhone.
 
 ## Сессия 3 — Продуктовое расширение
 
