@@ -1,0 +1,25 @@
+[Unit]
+Description=Chiron Telegram callback poller
+After=network-online.target chiron.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chiron
+Group=chiron
+WorkingDirectory=/opt/chiron/app
+EnvironmentFile=/opt/chiron/.env.staging
+Environment=PATH=/opt/chiron/node/bin:/usr/bin:/bin
+Environment=HOME=/opt/chiron
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/opt/chiron/node/bin/node /opt/chiron/app/node_modules/tsx/dist/cli.mjs /opt/chiron/app/scripts/telegram-poll.mts
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/chiron/telegram-offset
+
+[Install]
+WantedBy=multi-user.target

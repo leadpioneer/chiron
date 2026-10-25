@@ -188,11 +188,23 @@ curl -fsSI https://fit.leadpioneer.ru/login | grep -i x-robots-tag
 - Скрипт отправляет сообщение только пользователям с Telegram identity и
   `PLANNED`-сессией на сегодня; повторный запуск в тот же день не дублирует
   сообщение благодаря audit `REMINDER_SENT`.
-- Inline-кнопки «Отложить на завтра» и «Окей» обрабатываются
-  `POST /api/telegram/webhook`; webhook проверяет secret и владельца сессии.
-  «Окей» удаляет сообщение, «Отложить» переносит сессию.
+- Входящий webhook от Telegram на этом хосте получал `Connection timed out`,
+  поэтому callback-и забирает long polling service `chiron-telegram-poll`
+  через `getUpdates` и исходящий прокси. Поллер передаёт update в локальный
+  `POST /api/telegram/webhook`.
+- Inline-кнопки «Отложить на завтра» и «Окей» обрабатывает локальный webhook:
+  проверяет secret и владельца сессии, переносит сессию или удаляет сообщение.
+- Offset хранится в `/opt/chiron/telegram-offset`; перезапуск не теряет
+  обработанные callback-и.
 - Исходящие вызовы Telegram API идут через `TELEGRAM_PROXY_URL`
   (`http://127.0.0.1:2080` на staging).
+- Управление поллером:
+
+```bash
+sudo systemctl status chiron-telegram-poll --no-pager
+sudo systemctl restart chiron-telegram-poll
+sudo journalctl -u chiron-telegram-poll -n 50 --no-pager
+```
 - Проверка без отправки: `send-reminders.mts --dry-run`.
 - Тест только владельцу: `--test-telegram-id=<id>`; другим тестерам
   сообщения не отправляются.
