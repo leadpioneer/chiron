@@ -136,6 +136,61 @@ test.describe("coach mode", () => {
     }
   });
 
+  test("links an existing account by Telegram ID without creating a duplicate", async ({
+    page,
+  }) => {
+    const sql = createDb();
+    try {
+      const coach = await onboard(page, { sql });
+      const telegramId = String(Date.now());
+      const userRows = await sql`
+        insert into users (display_name)
+        values ('Daria Existing')
+        returning id
+      `;
+      const menteeId = userRows[0]!.id as string;
+      await sql`
+        insert into identities (user_id, provider, provider_user_id)
+        values (${menteeId}, 'telegram', ${telegramId})
+      `;
+
+      const link = await page.request.post("/api/mentees/link", {
+        data: { telegramId },
+      });
+      expect(link.ok()).toBeTruthy();
+      const body = (await link.json()) as {
+        mentee: { id: string; displayName: string };
+      };
+      expect(body.mentee.id).toBe(menteeId);
+      expect(body.mentee.displayName).toBe("Daria Existing");
+
+      const relation = await sql`
+        select status, permissions from coach_mentees
+        where coach_user_id = ${coach.userId}
+          and mentee_user_id = ${menteeId}
+      `;
+      expect(relation[0]?.status).toBe("ACTIVE");
+      expect(relation[0]?.permissions).toBe("WRITE");
+
+      const audit = await sql`
+        select actor_user_id::text as "actorUserId"
+        from audit_events
+        where user_id = ${menteeId}
+          and event_type = 'MENTEE_LINKED'
+        order by created_at desc
+        limit 1
+      `;
+      expect(audit[0]?.actorUserId).toBe(coach.userId);
+
+      await page.goto("/mentees");
+      await expect(
+        page.getByRole("heading", { name: "Daria Existing" }),
+      ).toBeVisible();
+    } finally {
+      await sql.end();
+    }
+  });
+
   test("rejects an invalid subject cookie", async ({ page }) => {
     const sql = createDb();
     try {

@@ -14,6 +14,8 @@ const ERROR_TEXT: Record<string, string> = {
   name_required: "Укажите имя подопечного.",
   telegram_id_invalid: "Telegram ID должен состоять из цифр.",
   telegram_already_linked: "Этот Telegram уже привязан к другому профилю.",
+  cannot_link_self: "Нельзя связать тренера с самим собой.",
+  already_has_coach: "У пользователя уже есть активный тренер.",
   not_found: "Связь с подопечным не найдена.",
 };
 
@@ -140,6 +142,30 @@ export default async function MenteesPage({
           )}
           <button className="btn btn-primary" type="submit">
             Создать и заполнить профиль
+          </button>
+        </form>
+      </section>
+
+      <section className="card" style={{ marginTop: 16 }}>
+        <h2 className="card-title">Уже есть аккаунт</h2>
+        <p className="small muted">
+          Если человек уже зарегистрирован в Chiron, свяжите его по числовому
+          Telegram ID. Второй профиль не создаётся.
+        </p>
+        <form action="/api/mentees/link" method="post" className="stack">
+          <label className="field">
+            <span className="label">Telegram ID</span>
+            <input
+              className="input"
+              name="telegramId"
+              required
+              inputMode="numeric"
+              pattern="[0-9]+"
+              placeholder="Например, 123456789"
+            />
+          </label>
+          <button className="btn" type="submit">
+            Связать и открыть дневник
           </button>
         </form>
       </section>

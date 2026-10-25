@@ -38,6 +38,10 @@
 
 Тренер видит только активные связи. Отзыв доступа не удаляет дневник.
 
+Если подопечный уже зарегистрирован, его можно связать по числовому Telegram
+ID: второй профиль не создаётся. На staging 25.10.2026 так связаны Илья и
+Daria Potapova; связь `ACTIVE`, `WRITE`.
+
 ### 3. Контекст subject
 
 - `viewer` — кто вошёл; `subject` — чей дневник открыт.
@@ -88,7 +92,9 @@
 
 - Миграция `0003_dusty_skullbuster.sql`: `coach_mentees`, nullable
   `audit_events.actor_user_id`.
-- Новые API: `/api/mentees`, `/api/mentees/[id]/revoke`, `/api/subject`.
+- Новые API: `/api/mentees`, `/api/mentees/link`,
+  `/api/mentees/[id]/revoke`, `/api/subject`.
+- Новые audit-события: `MENTEE_CREATED`, `MENTEE_LINKED`, `MENTEE_REVOKED`.
 - Новые E2E: `tests/e2e/mentees.spec.ts`.
 - Доменная логика тренировок не менялась — изменился только контекст и права.
 

@@ -18,6 +18,7 @@ const AUDIT_LABELS: Record<string, string> = {
   SESSION_REOPENED: "Тренировка возвращена в работу",
   SET_DELETED: "Подход удалён",
   MENTEE_CREATED: "Создан подопечный",
+  MENTEE_LINKED: "Подопечный привязан",
   MENTEE_REVOKED: "Доступ к подопечному отозван",
   PLAN_VERSION_CREATED: "Новая версия плана",
   RECOMMENDATION_REJECTED: "Рекомендация отклонена",

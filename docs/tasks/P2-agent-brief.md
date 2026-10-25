@@ -6,7 +6,7 @@
 - **Обязательное чтение:** `AGENTS.md`,
   [`ADR-008`](../decisions/ADR-008-user-control-and-corrections.md),
   [`v1-decisions`](../decisions/v1-decisions.md).
-- **Отчёт:** `tests/e2e/control.spec.ts`, полный `npx playwright test` — 41/41.
+- **Отчёт:** `tests/e2e/control.spec.ts`, полный `npx playwright test` — 42/42.
 
 ## Цель
 

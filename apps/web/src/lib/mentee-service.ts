@@ -190,6 +190,105 @@ export async function listUnlinkedTelegramIds(): Promise<string[]> {
   return numeric.filter((id) => !linked.has(id));
 }
 
+export async function linkExistingMenteeByTelegramId(
+  coachUserId: string,
+  telegramId: string,
+): Promise<{ id: string; displayName: string }> {
+  const normalized = telegramId.trim();
+  if (!/^\d{1,20}$/.test(normalized)) {
+    throw new MenteeError(
+      "TELEGRAM_ID_INVALID",
+      "Telegram ID должен состоять из цифр",
+      422,
+    );
+  }
+  const db = getDb();
+  const rows = await db
+    .select({
+      userId: users.id,
+      displayName: users.displayName,
+      deletedAt: users.deletedAt,
+    })
+    .from(identities)
+    .innerJoin(users, eq(users.id, identities.userId))
+    .where(
+      and(
+        eq(identities.provider, "telegram"),
+        eq(identities.providerUserId, normalized),
+      ),
+    )
+    .limit(1);
+  const mentee = rows[0];
+  if (!mentee || mentee.deletedAt) {
+    throw new MenteeError(
+      "NOT_FOUND",
+      "Пользователь с таким Telegram ID не найден",
+      404,
+    );
+  }
+  if (mentee.userId === coachUserId) {
+    throw new MenteeError(
+      "CANNOT_LINK_SELF",
+      "Нельзя связать тренера с самим собой",
+      422,
+    );
+  }
+
+  const activeLinks = await db
+    .select({
+      coachUserId: coachMentees.coachUserId,
+      status: coachMentees.status,
+    })
+    .from(coachMentees)
+    .where(
+      and(
+        eq(coachMentees.menteeUserId, mentee.userId),
+        eq(coachMentees.status, "ACTIVE"),
+      ),
+    );
+  if (activeLinks.some((link) => link.coachUserId !== coachUserId)) {
+    throw new MenteeError(
+      "ALREADY_HAS_COACH",
+      "У пользователя уже есть активный тренер",
+      409,
+    );
+  }
+
+  return db.transaction(async (tx) => {
+    const relationRows = await tx
+      .insert(coachMentees)
+      .values({
+        coachUserId,
+        menteeUserId: mentee.userId,
+        status: "ACTIVE",
+        permissions: "WRITE",
+      })
+      .onConflictDoUpdate({
+        target: [coachMentees.coachUserId, coachMentees.menteeUserId],
+        set: { status: "ACTIVE", permissions: "WRITE", updatedAt: new Date() },
+      })
+      .returning({ id: coachMentees.id });
+    const relation = relationRows[0];
+    if (!relation) {
+      throw new MenteeError(
+        "LINK_FAILED",
+        "Не удалось связать профиль",
+        500,
+      );
+    }
+    await tx.insert(auditEvents).values({
+      userId: mentee.userId,
+      actorUserId: coachUserId,
+      entity: "coach_mentee",
+      entityId: relation.id,
+      eventType: "MENTEE_LINKED",
+      payload: { source: "existing_telegram" },
+      versions: { rules: "1.0.0" },
+    });
+    return { id: mentee.userId, displayName: mentee.displayName };
+  });
+}
+
 export async function revokeMentee(
   coachUserId: string,
   menteeUserId: string,
