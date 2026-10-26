@@ -158,6 +158,16 @@ export function RecommendationCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const changeIds = useMemo(
+    () =>
+      new Set(
+        (recommendation.changes as Array<{ prescriptionId: string }>).map(
+          (change) => change.prescriptionId,
+        ),
+      ),
+    [recommendation.changes],
+  );
+  const canEdit = changeIds.size > 0;
 
   const changed = useMemo(() => {
     if (items.length !== selected.size) return true;
@@ -190,7 +200,11 @@ export function RecommendationCard({
 
   function buildEdits() {
     return items
-      .filter((item) => selected.has(item.prescriptionId))
+      .filter(
+        (item) =>
+          selected.has(item.prescriptionId) &&
+          changeIds.has(item.prescriptionId),
+      )
       .map((item) => {
         const draft = drafts[item.prescriptionId] ?? initialDraft(item);
         const load = parseNumber(draft.load);
@@ -325,7 +339,10 @@ export function RecommendationCard({
                   <span className="diff-after">{diff.after}</span>
                 </div>
 
-                {editing && selected.has(item.prescriptionId) ? (
+                {editing &&
+                canEdit &&
+                selected.has(item.prescriptionId) &&
+                changeIds.has(item.prescriptionId) ? (
                   <div className="grid grid-3" style={{ marginTop: 8 }}>
                     <label className="field">
                       <span className="label">Нагрузка</span>
@@ -440,7 +457,7 @@ export function RecommendationCard({
           >
             {busy ? "Сохраняю…" : done ? "Сохранено" : "Подтвердить"}
           </button>
-          {items.length > 0 ? (
+          {items.length > 0 && canEdit ? (
             <button
               className="btn"
               type="button"

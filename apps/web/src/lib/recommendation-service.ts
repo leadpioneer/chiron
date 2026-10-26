@@ -157,9 +157,13 @@ async function buildRecommendationView(
   row: typeof recommendations.$inferSelect,
 ): Promise<RecommendationView> {
   const candidates = parseCandidates(row.candidates);
-  const rows = await loadPrescriptionRows(
+  const prescriptionIds = new Set(
     candidates.changes.map((change) => change.prescriptionId),
   );
+  if (row.scopeType === "EXERCISE") {
+    prescriptionIds.add(row.scopeId);
+  }
+  const rows = await loadPrescriptionRows([...prescriptionIds]);
   const rowById = new Map(rows.map((item) => [item.prescription.id, item]));
   const items: RecommendationItem[] = [];
 
@@ -176,6 +180,22 @@ async function buildRecommendationView(
       before,
       after: applyChangeToPrescription(before, change),
     });
+  }
+
+  if (items.length === 0 && row.scopeType === "EXERCISE") {
+    const source = rowById.get(row.scopeId);
+    if (source) {
+      const before = toSnapshot(source);
+      items.push({
+        prescriptionId: row.scopeId,
+        exerciseName: source.exerciseName,
+        variantName: source.variantName,
+        role: before.role,
+        blockName: source.blockName,
+        before,
+        after: before,
+      });
+    }
   }
 
   return {
@@ -465,6 +485,9 @@ export async function createSessionRecommendations(
 
   const timestamp = new Date();
   const expiresAt = new Date(timestamp.getTime() + 7 * 86_400_000);
+  const prescriptionLabels = new Map(
+    prescriptionRows.map((row) => [row.prescription.id, row.exerciseName]),
+  );
 
   const inserted = await db.transaction(async (tx) => {
     if (input.regenerate) {
@@ -500,7 +523,11 @@ export async function createSessionRecommendations(
           scopeType: draft.scopeType,
           scopeId: draft.scopeId,
           status: "PENDING",
-          explanation: draft.explanation,
+          explanation:
+            draft.scopeType === "EXERCISE" &&
+            prescriptionLabels.has(draft.scopeId)
+              ? `«${prescriptionLabels.get(draft.scopeId)}»: ${draft.explanation}`
+              : draft.explanation,
           candidates: changes,
           evidence: {
             exposures: primaries.map((item) => ({

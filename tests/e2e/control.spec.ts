@@ -366,11 +366,26 @@ test.describe("user control and corrections", () => {
       });
 
       const recommendations = await sql`
-        select scope_id::text as "scopeId", action, candidates
-        from recommendations
-        where session_id = ${first!.id}
-        order by created_at
+        select
+          r.scope_id::text as "scopeId",
+          r.action,
+          r.explanation,
+          r.candidates,
+          e.name as "exerciseName"
+        from recommendations r
+        left join prescriptions p on p.id::text = r.scope_id
+        left join exercise_variants ev on ev.id = p.exercise_variant_id
+        left join exercises e on e.id = ev.exercise_id
+        where r.session_id = ${first!.id}
+        order by r.created_at
       `;
+      expect(
+        recommendations.every(
+          (item) =>
+            !item.exerciseName ||
+            String(item.explanation).includes(item.exerciseName as string),
+        ),
+      ).toBe(true);
       const reduce = recommendations.filter(
         (item) => item.action === "LOCAL_REDUCE",
       );
