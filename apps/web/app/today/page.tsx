@@ -213,6 +213,12 @@ export default async function TodayPage() {
             )}
             {nextSession.status === "PLANNED" && !reviewRequired ? (
               <>
+                <Link
+                  className="btn"
+                  href={`/sessions/${nextSession.id}`}
+                >
+                  Открыть план
+                </Link>
                 <RescheduleSessionButton
                   sessionId={nextSession.id}
                   currentDate={nextSession.plannedDate}

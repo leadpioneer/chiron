@@ -167,6 +167,123 @@ function safetyDraft(
   });
 }
 
+function localPainDraft(
+  prescription: PrescriptionSnapshot,
+  sets: SetRecord[],
+  safety: SafetyAssessment,
+): RecommendationDraft {
+  const painWeights = sets
+    .filter((set) => set.pain && set.weightKg !== null)
+    .map((set) => set.weightKg as number);
+  const painFreeWeights = sets
+    .filter((set) => !set.pain && set.weightKg !== null)
+    .map((set) => set.weightKg as number);
+  const painFreeAssistance = sets
+    .filter((set) => !set.pain && set.assistanceKg !== null)
+    .map((set) => set.assistanceKg as number);
+  const painAssistance = sets
+    .filter((set) => set.pain && set.assistanceKg !== null)
+    .map((set) => set.assistanceKg as number);
+  const painFreeAdded = sets
+    .filter((set) => !set.pain && set.addedKg !== null)
+    .map((set) => set.addedKg as number);
+  const painAdded = sets
+    .filter((set) => set.pain && set.addedKg !== null)
+    .map((set) => set.addedKg as number);
+
+  const makeReduce = (
+    change: ProposalChange,
+    targetText: string,
+  ): RecommendationDraft => {
+    return makeDraft({
+      action: "LOCAL_REDUCE",
+      prescription,
+      changes: [change],
+      reasons: [
+        "В этом упражнении был болезненный подход.",
+        targetText,
+      ],
+      ruleIds: ["SAFETY_YELLOW", "LOCAL_PAIN_REDUCE"],
+      safety,
+      explanation: `Болезненный подход не повышаю. ${targetText} Остальные упражнения без изменений.`,
+    });
+  };
+
+  if (prescription.loadMode === "EXTERNAL") {
+    const target =
+      painFreeWeights.length > 0
+        ? Math.min(...painFreeWeights)
+        : painWeights.length > 0
+          ? Math.max(0, Math.min(...painWeights) - prescription.incrementKg)
+          : null;
+    if (target !== null && target !== prescription.weightKg) {
+      return makeReduce(
+        { prescriptionId: prescription.id, weightKg: normalizeNumber(target) },
+        `Возвращаю вес к ${normalizeNumber(target)} кг.`,
+      );
+    }
+  } else if (prescription.loadMode === "ASSISTED") {
+    const target =
+      painFreeAssistance.length > 0
+        ? Math.max(...painFreeAssistance)
+        : painAssistance.length > 0
+          ? Math.min(...painAssistance) + prescription.incrementKg
+          : prescription.assistanceKg !== null
+            ? prescription.assistanceKg + prescription.incrementKg
+            : null;
+    if (target !== null && target !== prescription.assistanceKg) {
+      return makeReduce(
+        {
+          prescriptionId: prescription.id,
+          assistanceKg: normalizeNumber(target),
+        },
+        `Увеличиваю помощь до ${normalizeNumber(target)} кг.`,
+      );
+    }
+  } else if (prescription.loadMode === "BODYWEIGHT_PLUS") {
+    const target =
+      painFreeAdded.length > 0
+        ? Math.min(...painFreeAdded)
+        : painAdded.length > 0
+          ? Math.max(0, Math.min(...painAdded) - prescription.incrementKg)
+          : prescription.addedKg !== null
+            ? Math.max(0, prescription.addedKg - prescription.incrementKg)
+            : null;
+    if (target !== null && target !== prescription.addedKg) {
+      return makeReduce(
+        { prescriptionId: prescription.id, addedKg: normalizeNumber(target) },
+        `Снижаю добавленный вес до ${normalizeNumber(target)} кг.`,
+      );
+    }
+  }
+
+  if (prescription.sets > 2) {
+    return makeReduce(
+      { prescriptionId: prescription.id, sets: prescription.sets - 1 },
+      "Убираю один подход.",
+    );
+  }
+  if (prescription.targetReps > prescription.repMin) {
+    return makeReduce(
+      { prescriptionId: prescription.id, targetReps: prescription.targetReps - 1 },
+      "Снижаю целевую цель на одно повторение.",
+    );
+  }
+
+  return makeDraft({
+    action: "HOLD",
+    prescription,
+    reasons: [
+      "В этом упражнении был болезненный подход.",
+      "Нагрузку не повышаю; остальные упражнения оцениваются отдельно.",
+    ],
+    ruleIds: ["SAFETY_YELLOW", "LOCAL_PAIN_HOLD"],
+    safety,
+    explanation:
+      "Болезненный подход не повышаю. Если боль повторится, нужна замена варианта или пересмотр цикла.",
+  });
+}
+
 function reduceDraft(
   prescription: PrescriptionSnapshot,
   safety: SafetyAssessment,
@@ -354,6 +471,9 @@ export function recommendProgression(input: {
   }
 
   if (safety.label === "YELLOW_PAIN") {
+    if (sets.some((set) => set.pain)) {
+      return localPainDraft(prescription, sets, safety);
+    }
     if (isDeclining(exposures)) {
       return reduceDraft(prescription, safety, [
         "Есть боль или дискомфорт, и результативность снижается.",

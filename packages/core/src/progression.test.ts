@@ -469,4 +469,81 @@ describe("progression", () => {
     expect(bench?.action).toBe("PROGRESS");
     expect(squat?.action).toBe("HOLD");
   });
+
+  it("lowers only the painful exercise to a tolerated weight", () => {
+    const painSafety: SafetyAssessment = {
+      label: "YELLOW_PAIN",
+      reasons: ["Есть боль или дискомфорт."],
+      blockProgression: true,
+      pause: false,
+      escalate: false,
+    };
+    const greenSafety: SafetyAssessment = {
+      label: "GREEN",
+      reasons: [],
+      blockProgression: false,
+      pause: false,
+      escalate: false,
+    };
+    const painfulRow: Exposure = {
+      id: "row-latest",
+      date: "2026-10-26",
+      plannedSets: 2,
+      plannedRepMin: 8,
+      plannedRepMax: 10,
+      targetReps: 8,
+      targetRir: 1,
+      sets: [
+        set(8, { weightKg: 59, rir: 0, pain: true, actualOrder: 0 }),
+        set(10, { weightKg: 52, rir: 1, pain: false, actualOrder: 1 }),
+      ],
+    };
+    const bench = prescription({
+      id: "bench",
+      weightKg: null,
+      role: "PRIMARY",
+      targetBlockKey: "press",
+    });
+    const row = prescription({
+      id: "row",
+      weightKg: null,
+      role: "ACCESSORY",
+      targetBlockKey: "pull",
+      exerciseName: "Горизонтальная тяга",
+      sets: 2,
+      repMin: 8,
+      repMax: 10,
+      targetReps: 8,
+      targetRir: 1,
+    });
+
+    const drafts = recommendSession({
+      sessionId: "session-pain",
+      wellness,
+      sessionRpe: "MODERATE",
+      safety: greenSafety,
+      primaries: [
+        {
+          prescription: bench,
+          exposures: [exposure([5, 5, 5], { weight: 70, rir: 2 })],
+          safety: greenSafety,
+        },
+        {
+          prescription: row,
+          exposures: [painfulRow],
+          safety: painSafety,
+        },
+      ],
+    });
+
+    const benchDraft = drafts.find((draft) => draft.scopeId === "bench");
+    const rowDraft = drafts.find((draft) => draft.scopeId === "row");
+    expect(benchDraft?.action).toBe("PROGRESS");
+    expect(benchDraft?.ruleIds).toContain("CALIBRATION_BASELINE");
+    expect(rowDraft?.action).toBe("LOCAL_REDUCE");
+    expect(rowDraft?.changes).toEqual([
+      { prescriptionId: "row", weightKg: 52 },
+    ]);
+    expect(rowDraft?.ruleIds).toContain("LOCAL_PAIN_REDUCE");
+  });
 });

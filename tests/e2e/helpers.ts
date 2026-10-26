@@ -296,6 +296,7 @@ export async function saveSetsAndComplete(
       assistanceKg?: number | null;
       addedKg?: number | null;
     };
+    pain?: (prescription: PrescriptionRow) => boolean;
     saveSets?: boolean;
   } = {},
 ): Promise<{ recommendations: Array<{ id: string; action: string }> }> {
@@ -325,7 +326,7 @@ export async function saveSetsAndComplete(
               reps,
               rir: options.rir ?? 3,
               technique: "NORMAL",
-              pain: false,
+              pain: options.pain?.(prescription) ?? false,
               completed: true,
               actualOrder: order++,
             },

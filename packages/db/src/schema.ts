@@ -368,6 +368,28 @@ export const setPerformances = pgTable(
   ],
 );
 
+export const sessionPrescriptionSkips = pgTable(
+  "session_prescription_skips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    prescriptionId: uuid("prescription_id")
+      .notNull()
+      .references(() => prescriptions.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("session_prescription_skips_pair_idx").on(
+      table.sessionId,
+      table.prescriptionId,
+    ),
+  ],
+);
+
 export const sessionPerformances = pgTable(
   "session_performances",
   {

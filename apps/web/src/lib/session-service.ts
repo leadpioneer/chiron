@@ -6,6 +6,7 @@ import {
   recommendations,
   safetyEvents,
   sessions,
+  sessionPrescriptionSkips,
   setPerformances,
   wellnessChecks,
 } from "@chiron/db";
@@ -92,6 +93,69 @@ export async function startSession(
       versions: { rules: "1.0.0" },
     });
   }
+}
+
+export async function skipSessionExercise(
+  userId: string,
+  sessionId: string,
+  prescriptionId: string,
+  actorUserId?: string,
+): Promise<void> {
+  const view = await getSessionView(sessionId, userId);
+  if (!view) {
+    throw new SessionError("NOT_FOUND", "Тренировка не найдена", 404);
+  }
+  ensureActiveCycle(view);
+  if (view.session.status === "COMPLETED") {
+    throw new SessionError(
+      "ALREADY_COMPLETED",
+      "Тренировка уже завершена",
+      409,
+    );
+  }
+  if (view.session.status === "SKIPPED") {
+    throw new SessionError("SESSION_SKIPPED", "Тренировка пропущена", 409);
+  }
+  const prescription = view.blocks
+    .flatMap((block) => block.prescriptions)
+    .find((item) => item.id === prescriptionId);
+  if (!prescription) {
+    throw new SessionError("NOT_FOUND", "Упражнение не найдено", 404);
+  }
+  if (prescription.role === "PRIMARY") {
+    throw new SessionError(
+      "PRIMARY_EXERCISE",
+      "Основное упражнение нельзя убрать; его можно заменить",
+      409,
+    );
+  }
+  const savedSets = view.sets.filter(
+    (set) => set.prescriptionId === prescriptionId,
+  );
+  if (savedSets.length > 0) {
+    throw new SessionError(
+      "EXERCISE_HAS_SETS",
+      "По упражнению уже есть подходы; убрать нельзя",
+      409,
+    );
+  }
+
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(sessionPrescriptionSkips)
+      .values({ sessionId, prescriptionId })
+      .onConflictDoNothing();
+    await tx.insert(auditEvents).values({
+      userId,
+      actorUserId: actorUserId ?? userId,
+      entity: "session",
+      entityId: sessionId,
+      eventType: "EXERCISE_SKIPPED",
+      payload: { prescriptionId, exerciseVariantId: prescription.exerciseVariantId },
+      versions: { rules: "1.0.0" },
+    });
+  });
 }
 
 export async function reopenSession(

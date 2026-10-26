@@ -9,6 +9,7 @@ import type {
 import {
   applyChangeToPrescription,
   assessSafety,
+  mergeSafetyAssessments,
   recommendSession,
   type Exposure,
   type PrescriptionSnapshot,
@@ -28,6 +29,7 @@ import {
   safetyEvents,
   sessionPerformances,
   sessions,
+  sessionPrescriptionSkips,
   setPerformances,
   targetBlocks,
   trainingCycles,
@@ -263,6 +265,7 @@ export async function createSessionRecommendations(
     comment: string | null;
     actualDate?: string;
     actorUserId?: string;
+    regenerate?: boolean;
   },
   options: { today?: string } = {},
 ): Promise<RecommendationView[]> {
@@ -290,7 +293,7 @@ export async function createSessionRecommendations(
     );
   }
 
-  if (sessionRow.session.status === "COMPLETED") {
+  if (sessionRow.session.status === "COMPLETED" && !input.regenerate) {
     const existing = await db
       .select()
       .from(recommendations)
@@ -310,7 +313,8 @@ export async function createSessionRecommendations(
     );
   }
 
-  const actualDate = input.actualDate ?? today;
+  const actualDate =
+    input.actualDate ?? sessionRow.session.actualDate ?? today;
   if (actualDate > today) {
     throw new RecommendationError(
       "DATE_IN_FUTURE",
@@ -324,27 +328,29 @@ export async function createSessionRecommendations(
     );
   }
 
-  await db
-    .update(sessions)
-    .set({ status: "COMPLETED", actualDate })
-    .where(eq(sessions.id, input.sessionId));
+  if (!input.regenerate) {
+    await db
+      .update(sessions)
+      .set({ status: "COMPLETED", actualDate })
+      .where(eq(sessions.id, input.sessionId));
 
-  await db
-    .insert(sessionPerformances)
-    .values({
-      sessionId: input.sessionId,
-      sessionRpe: input.sessionRpe,
-      comment: input.comment,
-      completedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: sessionPerformances.sessionId,
-      set: {
+    await db
+      .insert(sessionPerformances)
+      .values({
+        sessionId: input.sessionId,
         sessionRpe: input.sessionRpe,
         comment: input.comment,
         completedAt: new Date(),
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: sessionPerformances.sessionId,
+        set: {
+          sessionRpe: input.sessionRpe,
+          comment: input.comment,
+          completedAt: new Date(),
+        },
+      });
+  }
 
   const wellnessRows = await db
     .select()
@@ -353,11 +359,6 @@ export async function createSessionRecommendations(
     .orderBy(desc(wellnessChecks.createdAt))
     .limit(1);
   const wellness = mapWellness(wellnessRows[0]);
-
-  const globalSafety = assessSafety({
-    text: input.comment,
-    wellness,
-  });
 
   const prescriptionRows = await db
     .select({
@@ -387,6 +388,36 @@ export async function createSessionRecommendations(
     .from(setPerformances)
     .where(eq(setPerformances.sessionId, input.sessionId));
 
+  const hasSetPain = setRows.some((set) => set.pain);
+
+  // A painful set localizes the pain to that exercise. Do not turn a single
+  // accessory set into a session-wide block; keep only systemic wellness
+  // signals for the other exercises. Session-level text still applies.
+  const globalWellness =
+    hasSetPain && wellness
+      ? {
+          ...wellness,
+          symptom: false,
+          soreness:
+            wellness.soreness === "SEVERE"
+              ? ("SEVERE" as const)
+              : ("NONE" as const),
+        }
+      : wellness;
+
+  const globalSafety = assessSafety({
+    text: input.comment,
+    wellness: globalWellness,
+  });
+
+  const skipRows = await db
+    .select({ prescriptionId: sessionPrescriptionSkips.prescriptionId })
+    .from(sessionPrescriptionSkips)
+    .where(eq(sessionPrescriptionSkips.sessionId, input.sessionId));
+  const skippedPrescriptions = new Set(
+    skipRows.map((row) => row.prescriptionId),
+  );
+
   const primaries: Array<{
     prescription: PrescriptionSnapshot;
     exposures: Exposure[];
@@ -394,6 +425,7 @@ export async function createSessionRecommendations(
   }> = [];
 
   for (const row of prescriptionRows) {
+    if (skippedPrescriptions.has(row.prescription.id)) continue;
     const hasSets = setRows.some(
       (set) => set.prescriptionId === row.prescription.id,
     );
@@ -414,7 +446,10 @@ export async function createSessionRecommendations(
       prescription: snapshot,
       exposures,
       safety: pain
-        ? assessSafety({ text: "боль", wellness })
+        ? mergeSafetyAssessments(
+            globalSafety,
+            assessSafety({ text: "боль" }),
+          )
         : globalSafety,
     });
   }
@@ -432,6 +467,12 @@ export async function createSessionRecommendations(
   const expiresAt = new Date(timestamp.getTime() + 7 * 86_400_000);
 
   const inserted = await db.transaction(async (tx) => {
+    if (input.regenerate) {
+      await tx
+        .update(recommendations)
+        .set({ status: "SUPERSEDED" })
+        .where(eq(recommendations.sessionId, input.sessionId));
+    }
     await tx
       .update(recommendations)
       .set({ status: "EXPIRED" })
@@ -476,7 +517,7 @@ export async function createSessionRecommendations(
       if (result[0]) rows.push(result[0]);
     }
 
-    if (globalSafety.label === "RED") {
+    if (globalSafety.label === "RED" && !input.regenerate) {
       await tx.insert(safetyEvents).values({
         userId: input.userId,
         sessionId: input.sessionId,
@@ -493,11 +534,14 @@ export async function createSessionRecommendations(
       actorUserId: input.actorUserId ?? input.userId,
       entity: "session",
       entityId: input.sessionId,
-      eventType: "SESSION_COMPLETED",
+      eventType: input.regenerate
+        ? "RECOMMENDATIONS_REGENERATED"
+        : "SESSION_COMPLETED",
       payload: {
         sessionRpe: input.sessionRpe,
         actualDate,
         recommendations: rows.map((row) => row.id),
+        ...(input.regenerate ? { regenerated: true } : {}),
       },
       versions: { rules: "1.0.0", prompt: "rules-only" },
     });

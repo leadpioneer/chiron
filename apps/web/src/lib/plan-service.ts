@@ -27,6 +27,7 @@ import {
   prescriptions,
   recommendations,
   sessions,
+  sessionPrescriptionSkips,
   setPerformances,
   targetBlocks,
   trainingCycles,
@@ -509,6 +510,14 @@ export async function getSessionView(
     .where(eq(setPerformances.sessionId, sessionId))
     .orderBy(asc(setPerformances.actualOrder));
 
+  const skipRows = await db
+    .select({ prescriptionId: sessionPrescriptionSkips.prescriptionId })
+    .from(sessionPrescriptionSkips)
+    .where(eq(sessionPrescriptionSkips.sessionId, sessionId));
+  const skippedPrescriptions = new Set(
+    skipRows.map((row) => row.prescriptionId),
+  );
+
   const blockOrder = new Map<string, number>();
   for (const item of prescriptionRows) {
     const current = blockOrder.get(item.prescription.targetBlockId);
@@ -538,6 +547,7 @@ export async function getSessionView(
   }
 
   for (const item of prescriptionRows) {
+    if (skippedPrescriptions.has(item.prescription.id)) continue;
     const block = blockById.get(item.prescription.targetBlockId);
     if (!block) continue;
     const exposures = await getExposuresForVariant(
@@ -586,7 +596,7 @@ export async function getSessionView(
   return {
     session: row.session,
     cycle,
-    blocks,
+    blocks: blocks.filter((block) => block.prescriptions.length > 0),
     sets: setRows,
   };
 }

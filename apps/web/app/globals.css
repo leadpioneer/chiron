@@ -614,6 +614,7 @@ button {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   min-width: 0;
+  font-size: 16px;
 }
 
 .set-done {
@@ -948,6 +949,22 @@ button {
 
   .topbar-inner {
     padding: 10px 15px;
+  }
+
+  .topbar,
+  .bottom-nav {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .topbar {
+    background: rgba(11, 14, 13, 0.96);
+  }
+
+  .input,
+  .select,
+  .textarea {
+    font-size: 16px;
   }
 
   .nav {

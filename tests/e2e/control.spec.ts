@@ -225,4 +225,175 @@ test.describe("user control and corrections", () => {
       await sql.end();
     }
   });
+
+  test("auto-saves RIR after the set was already saved", async ({ page }) => {
+    const sql = createDb();
+    try {
+      const { cycleId } = await onboard(page, { sql });
+      const first = await getNextSession(sql, cycleId);
+      const prescriptions = await getSessionPrescriptions(sql, first!.id);
+      const external = prescriptions.find(
+        (item) => item.loadMode === "EXTERNAL",
+      );
+      expect(external).toBeTruthy();
+
+      const started = await page.request.post(
+        `/api/sessions/${first!.id}/start`,
+      );
+      expect(started.ok()).toBeTruthy();
+      await page.goto(`/sessions/${first!.id}`);
+
+      const card = page.locator(
+        `[data-prescription-id="${external!.id}"]`,
+      );
+      await card.getByLabel("Вес", { exact: true }).first().fill("40");
+      await card.getByLabel("Повторы", { exact: true }).first().fill("8");
+      await card
+        .getByRole("button", { name: "Готово", exact: true })
+        .first()
+        .click();
+      const firstRow = card.locator(".set-row").first();
+      await expect(firstRow.getByText("Сохранено")).toBeVisible();
+
+      await firstRow
+        .locator(".rir-row")
+        .getByRole("button", { name: "3", exact: true })
+        .click();
+      await expect(firstRow.getByText("Не сохранено")).toBeVisible();
+      await expect(firstRow.getByText("Сохранено")).toBeVisible({
+        timeout: 5_000,
+      });
+      await page.waitForTimeout(1_200);
+
+      const saved = await sql`
+        select rir from set_performances
+        where session_id = ${first!.id}
+          and prescription_id = ${external!.id}
+        order by actual_order
+        limit 1
+      `;
+      expect(saved[0]?.rir).toBe(3);
+    } finally {
+      await sql.end();
+    }
+  });
+
+  test("adds an extra set and persists it across reload", async ({ page }) => {
+    const sql = createDb();
+    try {
+      const { cycleId } = await onboard(page, { sql });
+      const first = await getNextSession(sql, cycleId);
+      const prescriptions = await getSessionPrescriptions(sql, first!.id);
+      const external = prescriptions.find(
+        (item) => item.loadMode === "EXTERNAL",
+      );
+      expect(external).toBeTruthy();
+
+      const started = await page.request.post(
+        `/api/sessions/${first!.id}/start`,
+      );
+      expect(started.ok()).toBeTruthy();
+      await page.goto(`/sessions/${first!.id}`);
+
+      const card = page.locator(
+        `[data-prescription-id="${external!.id}"]`,
+      );
+      await card.getByRole("button", { name: "＋ Добавить подход" }).click();
+      const rows = card.locator(".set-row");
+      await expect(rows).toHaveCount(external!.sets + 1);
+      const newRow = rows.last();
+      await newRow.getByLabel("Вес", { exact: true }).fill("40");
+      await newRow.getByLabel("Повторы", { exact: true }).fill("8");
+      await newRow
+        .getByRole("button", { name: "Готово", exact: true })
+        .click();
+      await expect(newRow.getByText("Сохранено")).toBeVisible();
+
+      const count = await sql`
+        select count(*)::int as n from set_performances
+        where session_id = ${first!.id}
+          and prescription_id = ${external!.id}
+      `;
+      expect(count[0]?.n).toBe(1);
+      await page.reload();
+      await expect(
+        page.locator(
+          `[data-prescription-id="${external!.id}"] .set-row`,
+        ),
+      ).toHaveCount(external!.sets + 1);
+    } finally {
+      await sql.end();
+    }
+  });
+
+  test("localizes pain to the painful accessory instead of blocking the session", async ({
+    page,
+  }) => {
+    const sql = createDb();
+    try {
+      const { cycleId } = await onboard(page, { sql });
+      const first = await getNextSession(sql, cycleId);
+      const prescriptions = await getSessionPrescriptions(sql, first!.id);
+      const accessory =
+        prescriptions.find(
+          (item) =>
+            item.role !== "PRIMARY" && item.loadMode === "EXTERNAL",
+        ) ?? prescriptions.find((item) => item.role !== "PRIMARY");
+      expect(accessory).toBeTruthy();
+
+      const wellness = await page.request.post(
+        `/api/sessions/${first!.id}/wellness`,
+        {
+          data: {
+            sleepHours: 7,
+            sleepQuality: 3,
+            fatigue: 2,
+            stress: 2,
+            motivation: 3,
+            soreness: "LOCAL",
+            symptom: true,
+            symptomText: null,
+            illness: "NONE",
+          },
+        },
+      );
+      expect(wellness.ok()).toBeTruthy();
+
+      await saveSetsAndComplete(page, first!.id, prescriptions, {
+        pain: (item) => item.id === accessory!.id,
+        load: (item) =>
+          item.id === accessory!.id ? { weightKg: 40 } : undefined,
+      });
+
+      const recommendations = await sql`
+        select scope_id::text as "scopeId", action, candidates
+        from recommendations
+        where session_id = ${first!.id}
+        order by created_at
+      `;
+      const reduce = recommendations.filter(
+        (item) => item.action === "LOCAL_REDUCE",
+      );
+      expect(reduce).toHaveLength(1);
+      expect(reduce[0]?.scopeId).toBe(accessory!.id);
+      const changes = (
+        reduce[0]?.candidates as {
+          changes?: Array<{ weightKg?: number }>;
+        }
+      ).changes;
+      expect(changes?.[0]?.weightKg).toBe(37.5);
+
+      const others = recommendations.filter(
+        (item) => item.scopeId !== accessory!.id,
+      );
+      expect(others.length).toBeGreaterThan(0);
+      expect(
+        others.every(
+          (item) => !JSON.stringify(item.candidates).includes("SAFETY_YELLOW"),
+        ),
+      ).toBe(true);
+    } finally {
+      await sql.end();
+    }
+  });
 });

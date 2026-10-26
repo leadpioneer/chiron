@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   LlmResponse,
   LoadMode,
@@ -12,6 +12,7 @@ import { RED_FLAG_TEXT } from "@chiron/core";
 import { formatDate, formatRange, formatWeight } from "@/src/lib/dates";
 import { ReplaceExerciseButton } from "./ReplaceExerciseButton";
 import { ReopenSessionButton } from "./ReopenSessionButton";
+import { SkipExerciseButton } from "./SkipExerciseButton";
 
 interface LastSet {
   weightKg: number | null;
@@ -103,6 +104,7 @@ interface Row {
   technique: Technique;
   pain: boolean;
   saved: boolean;
+  dirty: boolean;
   saving: boolean;
   error: string | null;
   setType: SetType;
@@ -118,6 +120,16 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const EDITABLE_ROW_KEYS = new Set([
+  "weight",
+  "assistance",
+  "added",
+  "reps",
+  "rir",
+  "technique",
+  "pain",
+]);
+
 function buildInitialRows(view: ClientView): Record<string, Row[]> {
   const result: Record<string, Row[]> = {};
   for (const block of view.blocks) {
@@ -126,7 +138,13 @@ function buildInitialRows(view: ClientView): Record<string, Row[]> {
         .filter((set) => set.prescriptionId === prescription.id)
         .sort((a, b) => a.actualOrder - b.actualOrder);
       const rows: Row[] = [];
-      for (let index = 0; index < prescription.sets; index += 1) {
+      const plannedRows = prescription.sets;
+      const savedRows =
+        saved.length > 0
+          ? Math.max(...saved.map((set) => set.actualOrder + 1))
+          : 0;
+      const rowCount = Math.max(plannedRows, savedRows);
+      for (let index = 0; index < rowCount; index += 1) {
         const savedSet = saved.find((set) => set.actualOrder === index);
         const last =
           prescription.lastSets[index] ??
@@ -152,6 +170,7 @@ function buildInitialRows(view: ClientView): Record<string, Row[]> {
             "NORMAL",
           pain: savedSet?.pain ?? false,
           saved: savedSet?.completed ?? false,
+          dirty: false,
           saving: false,
           error: null,
           setType: (savedSet?.setType as SetType | undefined) ?? "WORKING",
@@ -163,8 +182,25 @@ function buildInitialRows(view: ClientView): Record<string, Row[]> {
   return result;
 }
 
-function calibrationHint(prescription: ClientPrescription): string | null {
-  if (prescription.loadMode === "EXTERNAL" && prescription.weightKg === null) {
+function canSaveRow(
+  prescription: ClientPrescription,
+  row: Row,
+): boolean {
+  const reps = parseNumber(row.reps);
+  if (reps === null || reps < 1) return false;
+  if (prescription.loadMode === "EXTERNAL") {
+    return parseNumber(row.weight) !== null;
+  }
+  if (prescription.loadMode === "ASSISTED") {
+    return parseNumber(row.assistance) !== null;
+  }
+  if (prescription.loadMode === "BODYWEIGHT_PLUS") {
+    return parseNumber(row.added) !== null;
+  }
+  return true;
+}
+
+function calibrationHint(prescription: ClientPrescription): string | null {  if (prescription.loadMode === "EXTERNAL" && prescription.weightKg === null) {
     return "Калибровка: введите рабочий вес. Он станет базой для следующих сессий.";
   }
   if (
@@ -211,6 +247,8 @@ export function SessionLogger({ view }: { view: ClientView }) {
   const [wellnessState, setWellnessState] = useState<string | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restRunning, setRestRunning] = useState(false);
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [sessionRpe, setSessionRpe] = useState("MODERATE");
   const [comment, setComment] = useState("");
@@ -237,36 +275,177 @@ export function SessionLogger({ view }: { view: ClientView }) {
         .filter((row) => row.saved).length,
     [rows],
   );
+  const hasDirty = useMemo(
+    () =>
+      Object.values(rows)
+        .flat()
+        .some((row) => row.dirty || row.saving),
+    [rows],
+  );
 
   useEffect(() => {
-    if (!restRunning) return;
-    if (restSeconds <= 0) {
-      setRestRunning(false);
-      return;
+    if (readOnly || stopSession) return;
+    const pending: Array<{
+      prescription: ClientPrescription;
+      index: number;
+    }> = [];
+    for (const block of view.blocks) {
+      for (const prescription of block.prescriptions) {
+        const list = rows[prescription.id] ?? [];
+        list.forEach((row, index) => {
+          if (row.dirty && !row.saving && canSaveRow(prescription, row)) {
+            pending.push({ prescription, index });
+          }
+        });
+      }
     }
-    const timer = window.setTimeout(
-      () => setRestSeconds((value) => value - 1),
-      1000,
-    );
+    if (pending.length === 0) return;
+    const timer = window.setTimeout(() => {
+      for (const item of pending) {
+        void saveSet(item.prescription, item.index, {
+          auto: true,
+          startRest: false,
+        });
+      }
+    }, 800);
     return () => window.clearTimeout(timer);
-  }, [restRunning, restSeconds]);
+  }, [rows, readOnly, stopSession, view.blocks]);
+
+  useEffect(() => {
+    if (!restRunning || restEndsAt === null) return;
+    const tick = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((restEndsAt - Date.now()) / 1000),
+      );
+      setRestSeconds(remaining);
+      if (remaining <= 0) {
+        setRestRunning(false);
+        setRestEndsAt(null);
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 500);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [restRunning, restEndsAt]);
+
+  async function acquireWakeLock() {
+    if (wakeLockRef.current || !("wakeLock" in navigator)) return;
+    try {
+      const wakeLock = (
+        navigator as Navigator & {
+          wakeLock?: {
+            request: (type: "screen") => Promise<{
+              release: () => Promise<void>;
+            }>;
+          };
+        }
+      ).wakeLock;
+      if (!wakeLock) return;
+      wakeLockRef.current = await wakeLock.request("screen");
+    } catch {
+      // Wake Lock is optional; the timer still catches up on resume.
+    }
+  }
+
+  async function releaseWakeLock() {
+    const lock = wakeLockRef.current;
+    wakeLockRef.current = null;
+    try {
+      await lock?.release();
+    } catch {
+      // Already released.
+    }
+  }
+
+  useEffect(() => {
+    if (restRunning && restEndsAt !== null) {
+      void acquireWakeLock();
+      const onVisible = () => {
+        if (document.visibilityState === "visible") void acquireWakeLock();
+      };
+      document.addEventListener("visibilitychange", onVisible);
+      return () => {
+        document.removeEventListener("visibilitychange", onVisible);
+        void releaseWakeLock();
+      };
+    }
+    void releaseWakeLock();
+  }, [restRunning, restEndsAt]);
+
+  function startRest(seconds: number) {
+    setRestSeconds(seconds);
+    setRestEndsAt(Date.now() + seconds * 1000);
+    setRestRunning(true);
+    void acquireWakeLock();
+  }
+
+  function stopRest() {
+    setRestRunning(false);
+    setRestEndsAt(null);
+    setRestSeconds(0);
+    void releaseWakeLock();
+  }
 
   function patchRow(
     prescriptionId: string,
     index: number,
     patch: Partial<Row>,
   ) {
+    const isEdit = Object.keys(patch).some((key) =>
+      EDITABLE_ROW_KEYS.has(key),
+    );
     setRows((current) => ({
       ...current,
       [prescriptionId]: current[prescriptionId]!.map((row, rowIndex) =>
-        rowIndex === index ? { ...row, ...patch } : row,
+        rowIndex === index
+          ? {
+              ...row,
+              ...patch,
+              ...(isEdit
+                ? { dirty: true, saved: false, error: null }
+                : {}),
+            }
+          : row,
       ),
+    }));
+  }
+
+  function addSet(prescription: ClientPrescription) {
+    const list = rows[prescription.id] ?? [];
+    const last = list[list.length - 1];
+    const newRow: Row = {
+      clientSetId: crypto.randomUUID(),
+      weight: last?.weight ?? numberText(prescription.weightKg),
+      assistance: last?.assistance ?? numberText(prescription.assistanceKg),
+      added: last?.added ?? numberText(prescription.addedKg),
+      reps: last?.reps ?? String(prescription.targetReps),
+      rir: last?.rir ?? null,
+      technique: "NORMAL",
+      pain: false,
+      saved: false,
+      dirty: false,
+      saving: false,
+      error: null,
+      setType: last?.setType ?? "WORKING",
+    };
+    setRows((current) => ({
+      ...current,
+      [prescription.id]: [...(current[prescription.id] ?? []), newRow],
     }));
   }
 
   async function saveSet(
     prescription: ClientPrescription,
     index: number,
+    options: { auto?: boolean; startRest?: boolean } = {},
   ) {
     const row = rows[prescription.id]?.[index];
     if (!row) return;
@@ -334,13 +513,19 @@ export function SessionLogger({ view }: { view: ClientView }) {
         });
         return;
       }
-      patchRow(prescription.id, index, { saving: false, saved: true });
-      setRestSeconds(prescription.role === "PRIMARY" ? 150 : 90);
-      setRestRunning(true);
+      patchRow(prescription.id, index, {
+        saving: false,
+        saved: true,
+        dirty: false,
+      });
+      if (options.startRest !== false) {
+        startRest(prescription.role === "PRIMARY" ? 150 : 90);
+      }
     } catch {
       patchRow(prescription.id, index, {
         saving: false,
         error: "Сеть недоступна.",
+        ...(options.auto ? { dirty: false } : {}),
       });
     }
   }
@@ -369,6 +554,7 @@ export function SessionLogger({ view }: { view: ClientView }) {
       patchRow(prescription.id, index, {
         saving: false,
         saved: false,
+        dirty: false,
         error: null,
       });
     } catch {
@@ -379,7 +565,8 @@ export function SessionLogger({ view }: { view: ClientView }) {
     }
   }
 
-  async function saveWellness() {    setWellnessState(null);
+  async function saveWellness() {
+    setWellnessState(null);
     try {
       const response = await fetch(
         `/api/sessions/${view.session.id}/wellness`,
@@ -491,6 +678,7 @@ export function SessionLogger({ view }: { view: ClientView }) {
               reps: String(source.reps),
               rir: source.rir ?? row.rir,
               saved: false,
+              dirty: false,
               error: null,
             };
           }),
@@ -509,6 +697,13 @@ export function SessionLogger({ view }: { view: ClientView }) {
   async function completeSession() {
     setCompleting(true);
     setCompleteError(null);
+    if (hasDirty) {
+      setCompleting(false);
+      setCompleteError(
+        "Есть несохранённые изменения. Подождите сохранения или заполните обязательные поля.",
+      );
+      return;
+    }
     const safetyNote =
       parseSafety && parseSafety !== "GREEN" ? quickText.trim() : "";
     const combinedComment = [comment.trim(), safetyNote]
@@ -602,6 +797,11 @@ export function SessionLogger({ view }: { view: ClientView }) {
         </div>
       ) : null}
 
+      {!readOnly && hasDirty ? (
+        <p className="tiny muted" style={{ marginTop: -6, marginBottom: 12 }}>
+          Есть несохранённые изменения — сохраняю автоматически.
+        </p>
+      ) : null}
       {readOnly ? (
         <div className="notice" style={{ marginBottom: 14 }}>
           <div className="row-between wrap">
@@ -759,6 +959,7 @@ export function SessionLogger({ view }: { view: ClientView }) {
                   prescription.role === "PRIMARY" ? " primary" : ""
                 }`}
                 key={prescription.id}
+                data-prescription-id={prescription.id}
               >
                 <div className="exercise-head">
                   <div>
@@ -790,12 +991,20 @@ export function SessionLogger({ view }: { view: ClientView }) {
                         ? "PRIMARY"
                         : prescription.role}
                     </span>
-                    {view.session.status === "PLANNED" ? (
+                    {view.session.status === "PLANNED" ||
+                    view.session.status === "IN_PROGRESS" ? (
                       <ReplaceExerciseButton
                         prescriptionId={prescription.id}
                         targetBlockKey={prescription.targetBlockKey}
                         role={prescription.role}
                         currentVariantId={prescription.exerciseVariantId}
+                      />
+                    ) : null}
+                    {!readOnly && prescription.role !== "PRIMARY" ? (
+                      <SkipExerciseButton
+                        sessionId={view.session.id}
+                        prescriptionId={prescription.id}
+                        exerciseName={prescription.exerciseName}
                       />
                     ) : null}
                   </div>
@@ -1055,6 +1264,19 @@ export function SessionLogger({ view }: { view: ClientView }) {
                           </button>
                         ) : null}
                       </div>
+                      {!readOnly && !row.error &&
+                      (row.saving || row.dirty || row.saved) ? (
+                        <span
+                          className="tiny muted"
+                          style={{ gridColumn: "1 / -1" }}
+                        >
+                          {row.saving
+                            ? "Сохраняю…"
+                            : row.dirty
+                              ? "Не сохранено"
+                              : "Сохранено"}
+                        </span>
+                      ) : null}
                       {row.error ? (
                         <span
                           className="error"
@@ -1066,6 +1288,15 @@ export function SessionLogger({ view }: { view: ClientView }) {
                     </div>
                   ))}
                 </div>
+                {!readOnly ? (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    type="button"
+                    onClick={() => addSet(prescription)}
+                  >
+                    ＋ Добавить подход
+                  </button>
+                ) : null}
               </div>
             );
           })}
@@ -1120,8 +1351,7 @@ export function SessionLogger({ view }: { view: ClientView }) {
             className="btn btn-sm btn-ghost"
             type="button"
             onClick={() => {
-              setRestRunning(false);
-              setRestSeconds(0);
+              stopRest();
             }}
           >
             Пропустить

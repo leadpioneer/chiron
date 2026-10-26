@@ -1,4 +1,4 @@
-import { and, asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { exerciseBlockRule } from "@chiron/core";
 import {
   auditEvents,
@@ -10,6 +10,8 @@ import {
   prescriptions,
   recommendations,
   sessions,
+  sessionPrescriptionSkips,
+  setPerformances,
   targetBlocks,
   trainingCycles,
 } from "@chiron/db";
@@ -197,15 +199,16 @@ export async function replacePrescriptionExercise(
   }
 
   const plannedRows = await db
-    .select({ id: sessions.id })
+    .select({ id: sessions.id, status: sessions.status })
     .from(sessions)
     .where(
       and(
         eq(sessions.cycleId, cycle.id),
         eq(sessions.sessionKey, current.prescription.sessionKey),
-        eq(sessions.status, "PLANNED"),
+        inArray(sessions.status, ["PLANNED", "IN_PROGRESS"]),
       ),
     )
+    .orderBy(asc(sessions.sessionIndex))
     .limit(1);
   if (!plannedRows[0]) {
     throw new PlanEditError(
@@ -213,6 +216,25 @@ export async function replacePrescriptionExercise(
       "Для этого упражнения нет запланированной тренировки",
       409,
     );
+  }
+  if (plannedRows[0].status === "IN_PROGRESS") {
+    const setRows = await db
+      .select({ id: setPerformances.id })
+      .from(setPerformances)
+      .where(
+        and(
+          eq(setPerformances.sessionId, plannedRows[0].id),
+          eq(setPerformances.prescriptionId, prescriptionId),
+        ),
+      )
+      .limit(1);
+    if (setRows.length > 0) {
+      throw new PlanEditError(
+        "EXERCISE_HAS_SETS",
+        "По этому упражнению уже есть подходы; замена недоступна",
+        409,
+      );
+    }
   }
 
   const before = snapshot({
@@ -447,13 +469,94 @@ export async function replacePrescriptionExercise(
       .set({ currentPlanVersionId: newVersionId })
       .where(eq(trainingCycles.id, cycle.id));
 
+    const activeSessions = await tx
+      .select({ id: sessions.id, status: sessions.status })
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.cycleId, cycle.id),
+          inArray(sessions.status, ["PLANNED", "IN_PROGRESS"]),
+        ),
+      )
+      .for("update");
+    const inProgressIds = activeSessions
+      .filter((session) => session.status === "IN_PROGRESS")
+      .map((session) => session.id);
+    if (inProgressIds.length > 0) {
+      const replacedSets = await tx
+        .select({ id: setPerformances.id })
+        .from(setPerformances)
+        .where(
+          and(
+            inArray(setPerformances.sessionId, inProgressIds),
+            eq(setPerformances.prescriptionId, prescriptionId),
+          ),
+        )
+        .limit(1);
+      if (replacedSets.length > 0) {
+        throw new PlanEditError(
+          "EXERCISE_HAS_SETS",
+          "По этому упражнению уже есть подходы; замена недоступна",
+          409,
+        );
+      }
+      const activeSets = await tx
+        .select({
+          id: setPerformances.id,
+          prescriptionId: setPerformances.prescriptionId,
+        })
+        .from(setPerformances)
+        .where(inArray(setPerformances.sessionId, inProgressIds))
+        .for("update");
+      for (const item of activeSets) {
+        const mapped = prescriptionIdMap.get(item.prescriptionId);
+        if (!mapped) {
+          throw new PlanEditError(
+            "BROKEN_PLAN",
+            "Не удалось перенести подходы на новую версию плана",
+            500,
+          );
+        }
+        await tx
+          .update(setPerformances)
+          .set({ prescriptionId: mapped })
+          .where(eq(setPerformances.id, item.id));
+      }
+    }
+
+    const activeSessionIds = activeSessions.map((session) => session.id);
+    const activeSkips = await tx
+      .select({
+        id: sessionPrescriptionSkips.id,
+        prescriptionId: sessionPrescriptionSkips.prescriptionId,
+      })
+      .from(sessionPrescriptionSkips)
+      .where(
+        inArray(sessionPrescriptionSkips.sessionId, activeSessionIds),
+      )
+      .for("update");
+    for (const item of activeSkips) {
+      const mapped = prescriptionIdMap.get(item.prescriptionId);
+      if (!mapped) {
+        throw new PlanEditError(
+          "BROKEN_PLAN",
+          "Не удалось перенести пропуски упражнений",
+          500,
+        );
+      }
+      await tx
+        .update(sessionPrescriptionSkips)
+        .set({ prescriptionId: mapped })
+        .where(eq(sessionPrescriptionSkips.id, item.id));
+    }
+
     await tx
       .update(sessions)
       .set({ planVersionId: newVersionId })
       .where(
         and(
           eq(sessions.cycleId, cycle.id),
-          eq(sessions.status, "PLANNED"),
+          inArray(sessions.status, ["PLANNED", "IN_PROGRESS"]),
         ),
       );
 
