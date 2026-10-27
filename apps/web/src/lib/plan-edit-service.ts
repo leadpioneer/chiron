@@ -3,6 +3,7 @@ import { exerciseBlockRule } from "@chiron/core";
 import {
   auditEvents,
   decisions,
+  exerciseLibrary,
   exerciseVariants,
   exercises,
   getDb,
@@ -107,10 +108,128 @@ function snapshot(input: {
   return { ...input };
 }
 
+function libraryVariantSlug(libraryId: string): string {
+  return `lib_${libraryId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")}`;
+}
+
+function inferLibraryLoadMode(
+  row: typeof exerciseLibrary.$inferSelect,
+): "EXTERNAL" | "ASSISTED" | "BODYWEIGHT" | "BODYWEIGHT_PLUS" {
+  const name = (row.nameRu ?? row.name).toLowerCase();
+  const equipment = (row.equipment ?? "").toLowerCase();
+  if (/assisted|с помощью|помощ|резин/.test(name) || equipment === "bands") {
+    return "ASSISTED";
+  }
+  if (
+    /weighted|с дополнительным весом|с отягощением|отягощ/.test(name)
+  ) {
+    return "BODYWEIGHT_PLUS";
+  }
+  if (equipment === "body only" || equipment === "") {
+    return "BODYWEIGHT";
+  }
+  return "EXTERNAL";
+}
+
+async function ensureLibraryVariant(
+  row: typeof exerciseLibrary.$inferSelect,
+  actor: { userId: string; actorUserId?: string },
+): Promise<{
+  variant: typeof exerciseVariants.$inferSelect;
+  exerciseName: string;
+}> {
+  const existing = await getDb()
+    .select({
+      variant: exerciseVariants,
+      exerciseName: exercises.name,
+    })
+    .from(exerciseVariants)
+    .innerJoin(exercises, eq(exerciseVariants.exerciseId, exercises.id))
+    .where(eq(exerciseVariants.libraryId, row.id))
+    .limit(1);
+  if (existing[0]) return existing[0];
+
+  const name = row.nameRu ?? row.name;
+  const slug = libraryVariantSlug(row.id);
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    await tx
+      .insert(exercises)
+      .values({
+        slug,
+        name,
+        pattern: row.category ?? row.force ?? "strength",
+        aliases: row.aliasesRu,
+      })
+      .onConflictDoNothing();
+    const exerciseRows = await tx
+      .select()
+      .from(exercises)
+      .where(eq(exercises.slug, slug))
+      .limit(1);
+    const exercise = exerciseRows[0];
+    if (!exercise) {
+      throw new PlanEditError(
+        "LIBRARY_EXERCISE_FAILED",
+        "Не удалось добавить упражнение из базы",
+        500,
+      );
+    }
+
+    const insertedVariants = await tx
+      .insert(exerciseVariants)
+      .values({
+        exerciseId: exercise.id,
+        libraryId: row.id,
+        slug,
+        name,
+        equipment: row.equipmentRu ?? row.equipment ?? "other",
+        loadMode: inferLibraryLoadMode(row),
+        incrementKg: 2.5,
+        pair: false,
+        sides: 1,
+      })
+      .onConflictDoNothing()
+      .returning({ id: exerciseVariants.id });
+    const variantRows = await tx
+      .select()
+      .from(exerciseVariants)
+      .where(eq(exerciseVariants.slug, slug))
+      .limit(1);
+    const variant = variantRows[0];
+    if (!variant) {
+      throw new PlanEditError(
+        "LIBRARY_EXERCISE_FAILED",
+        "Не удалось добавить вариант упражнения",
+        500,
+      );
+    }
+    if (insertedVariants.length > 0) {
+      await tx.insert(auditEvents).values({
+        userId: actor.userId,
+        actorUserId: actor.actorUserId ?? actor.userId,
+        entity: "exercise_variant",
+        entityId: variant.id,
+        eventType: "LIBRARY_EXERCISE_ADDED",
+        payload: {
+          libraryId: row.id,
+          name,
+          loadMode: variant.loadMode,
+        },
+        versions: { rules: "1.0.0" },
+      });
+    }
+    return { variant, exerciseName: exercise.name };
+  });
+}
+
 export async function replacePrescriptionExercise(
   userId: string,
   prescriptionId: string,
-  newVariantId: string,
+  input: { variantId?: string; libraryId?: string },
   actorUserId?: string,
 ): Promise<ReplaceExerciseResult> {
   const db = getDb();
@@ -154,39 +273,87 @@ export async function replacePrescriptionExercise(
     throw new PlanEditError("NOT_FOUND", "Упражнение в плане не найдено", 404);
   }
 
-  const selectedRows = await db
-    .select({
-      variant: exerciseVariants,
-      exerciseName: exercises.name,
-    })
-    .from(exerciseVariants)
-    .innerJoin(exercises, eq(exerciseVariants.exerciseId, exercises.id))
-    .where(eq(exerciseVariants.id, newVariantId))
-    .limit(1);
-  const selected = selectedRows[0];
-  if (!selected) {
-    throw new PlanEditError(
-      "VARIANT_NOT_FOUND",
-      "Упражнение не найдено в базе",
-      404,
-    );
+  let selected:
+    | {
+        variant: typeof exerciseVariants.$inferSelect;
+        exerciseName: string;
+      }
+    | undefined;
+  let library: typeof exerciseLibrary.$inferSelect | undefined;
+
+  if (input.libraryId) {
+    const libraryRows = await db
+      .select()
+      .from(exerciseLibrary)
+      .where(eq(exerciseLibrary.id, input.libraryId))
+      .limit(1);
+    library = libraryRows[0];
+    if (!library) {
+      throw new PlanEditError(
+        "LIBRARY_EXERCISE_NOT_FOUND",
+        "Упражнение не найдено в базе",
+        404,
+      );
+    }
+    if (
+      current.prescription.role === "PRIMARY" &&
+      (library.mechanic !== "compound" ||
+        library.category === "stretching" ||
+        library.category === "cardio")
+    ) {
+      throw new PlanEditError(
+        "NOT_PRIMARY",
+        "Для основного блока выберите базовое упражнение",
+        422,
+      );
+    }
+    selected = await ensureLibraryVariant(library, {
+      userId,
+      actorUserId,
+    });
+  } else if (input.variantId) {
+    const selectedRows = await db
+      .select({
+        variant: exerciseVariants,
+        exerciseName: exercises.name,
+      })
+      .from(exerciseVariants)
+      .innerJoin(exercises, eq(exerciseVariants.exerciseId, exercises.id))
+      .where(eq(exerciseVariants.id, input.variantId))
+      .limit(1);
+    selected = selectedRows[0];
+    if (!selected) {
+      throw new PlanEditError(
+        "VARIANT_NOT_FOUND",
+        "Упражнение не найдено в базе",
+        404,
+      );
+    }
+
+    const rule = exerciseBlockRule(selected.variant.slug);
+    if (!rule || rule.blockKey !== current.block.key) {
+      throw new PlanEditError(
+        "INCOMPATIBLE_EXERCISE",
+        "Это упражнение не подходит для данного блока",
+        422,
+      );
+    }
+    if (
+      current.prescription.role === "PRIMARY" &&
+      !rule.primaryEligible
+    ) {
+      throw new PlanEditError(
+        "NOT_PRIMARY",
+        "Для основного блока выберите базовое упражнение",
+        422,
+      );
+    }
   }
 
-  const rule = exerciseBlockRule(selected.variant.slug);
-  if (!rule || rule.blockKey !== current.block.key) {
+  if (!selected) {
     throw new PlanEditError(
-      "INCOMPATIBLE_EXERCISE",
-      "Это упражнение не подходит для данного блока",
-      422,
-    );
-  }
-  if (
-    current.prescription.role === "PRIMARY" &&
-    !rule.primaryEligible
-  ) {
-    throw new PlanEditError(
-      "NOT_PRIMARY",
-      "Для основного блока выберите базовое упражнение",
+      "VARIANT_REQUIRED",
+      "Выберите упражнение",
       422,
     );
   }
@@ -321,6 +488,7 @@ export async function replacePrescriptionExercise(
         source: "manual",
         fromVariantId: current.prescription.exerciseVariantId,
         toVariantId: selected.variant.id,
+        toLibraryId: library?.id ?? null,
       },
       rulesVersion: "1.0.0",
       promptVersion: null,

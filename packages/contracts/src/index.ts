@@ -244,9 +244,15 @@ export const rescheduleSessionSchema = z.object({
 });
 export type RescheduleSessionInput = z.infer<typeof rescheduleSessionSchema>;
 
-export const replaceExerciseSchema = z.object({
-  variantId: z.string().uuid(),
-});
+export const replaceExerciseSchema = z
+  .object({
+    variantId: z.string().uuid().optional(),
+    libraryId: z.string().min(1).max(120).optional(),
+  })
+  .refine(
+    (value) => Boolean(value.variantId) !== Boolean(value.libraryId),
+    "Выберите ровно одно упражнение",
+  );
 export type ReplaceExerciseInput = z.infer<typeof replaceExerciseSchema>;
 
 export const cycleReviewActionSchema = z.enum(["REBUILD", "STOP"]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface ExerciseOption {
   variantId: string;
@@ -8,6 +8,18 @@ interface ExerciseOption {
   variantName: string;
   exerciseName: string;
   blockKey: string;
+  primaryEligible: boolean;
+}
+
+interface LibraryResult {
+  id: string;
+  name: string;
+  nameRu: string | null;
+  equipment: string | null;
+  equipmentRu: string | null;
+  mechanic: string | null;
+  category: string | null;
+  categoryRu: string | null;
   primaryEligible: boolean;
 }
 
@@ -27,7 +39,51 @@ export function ReplaceExerciseButton({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState("");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<LibraryResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        const response = await fetch(
+          `/api/exercises/search?q=${encodeURIComponent(trimmed)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        if (!response.ok) {
+          setError("Не удалось загрузить базу упражнений.");
+          return;
+        }
+        const payload = (await response.json()) as {
+          results?: LibraryResult[];
+        };
+        setResults(payload.results ?? []);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          setError("Сеть недоступна. Попробуйте ещё раз.");
+        }
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, open]);
 
   const grouped = useMemo(() => {
     const filtered = options.filter(
@@ -44,6 +100,14 @@ export function ReplaceExerciseButton({
     }
     return [...groups.entries()];
   }, [options, targetBlockKey, role, currentVariantId]);
+
+  const visibleResults = useMemo(
+    () =>
+      role === "PRIMARY"
+        ? results.filter((item) => item.primaryEligible)
+        : results,
+    [results, role],
+  );
 
   async function openPicker(): Promise<void> {
     setOpen(true);
@@ -68,7 +132,7 @@ export function ReplaceExerciseButton({
   }
 
   async function replaceExercise(): Promise<void> {
-    if (!selected) return;
+    if (!selectedLibraryId && !selected) return;
     setSaving(true);
     setError(null);
     try {
@@ -77,7 +141,11 @@ export function ReplaceExerciseButton({
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ variantId: selected }),
+          body: JSON.stringify(
+            selectedLibraryId
+              ? { libraryId: selectedLibraryId }
+              : { variantId: selected },
+          ),
         },
       );
       if (!response.ok) {
@@ -128,7 +196,10 @@ export function ReplaceExerciseButton({
                 <select
                   className="input"
                   value={selected}
-                  onChange={(event) => setSelected(event.target.value)}
+                  onChange={(event) => {
+                    setSelected(event.target.value);
+                    setSelectedLibraryId(null);
+                  }}
                 >
                   <option value="">Выберите упражнение…</option>
                   {grouped.map(([exerciseName, items]) => (
@@ -146,8 +217,67 @@ export function ReplaceExerciseButton({
 
             {grouped.length === 0 && !loading ? (
               <p className="small muted">
-                Для этого блока в базе нет других подходящих упражнений.
+                В коротком списке для этого блока нет других упражнений — ниже
+                можно найти упражнение во всей базе.
               </p>
+            ) : null}
+
+            {!loading ? (
+              <>
+                <div className="divider" />
+                <label className="field">
+                  <span className="label">Найти в базе упражнений</span>
+                  <input
+                    className="input"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Например, приседания"
+                    autoComplete="off"
+                  />
+                </label>
+                {searching ? (
+                  <p className="small muted">Ищу…</p>
+                ) : null}
+                {visibleResults.length > 0 ? (
+                  <div
+                    className="stack"
+                    style={{ maxHeight: 240, overflowY: "auto" }}
+                  >
+                    {visibleResults.map((item) => (
+                      <button
+                        key={item.id}
+                        className={`btn${
+                          selectedLibraryId === item.id ? " btn-primary" : ""
+                        }`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLibraryId(item.id);
+                          setSelected("");
+                        }}
+                        style={{ textAlign: "left" }}
+                      >
+                        <span>
+                          {item.nameRu ?? item.name}
+                          <span className="tiny muted">
+                            {" "}
+                            · {item.equipmentRu ?? item.equipment ?? "—"}
+                            {item.categoryRu ? ` · ${item.categoryRu}` : ""}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : query.trim().length >= 2 && !searching ? (
+                  <p className="small muted">Ничего не найдено.</p>
+                ) : null}
+                {role === "PRIMARY" &&
+                results.some((item) => !item.primaryEligible) ? (
+                  <p className="tiny muted">
+                    Для основного блока показываются только базовые
+                    многосуставные упражнения.
+                  </p>
+                ) : null}
+              </>
             ) : null}
 
             {error ? (
@@ -168,7 +298,11 @@ export function ReplaceExerciseButton({
                 className="btn btn-primary"
                 type="button"
                 onClick={replaceExercise}
-                disabled={saving || loading || !selected}
+                disabled={
+                  saving ||
+                  loading ||
+                  (!selectedLibraryId && !selected)
+                }
               >
                 {saving ? "Сохраняю…" : "Заменить"}
               </button>

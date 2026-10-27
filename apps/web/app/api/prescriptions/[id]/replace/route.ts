@@ -24,7 +24,7 @@ export async function POST(
     const result = await replacePrescriptionExercise(
       subjectContext.subject.id,
       id,
-      parsed.data.variantId,
+      parsed.data,
       subjectContext.viewer.id,
     );
     return NextResponse.json({ ok: true, ...result });
