@@ -10,8 +10,10 @@ import type {
 } from "@chiron/contracts";
 import { RED_FLAG_TEXT } from "@chiron/core";
 import { formatDate, formatRange, formatWeight } from "@/src/lib/dates";
+import { AddExerciseButton } from "./AddExerciseButton";
 import { ReplaceExerciseButton } from "./ReplaceExerciseButton";
 import { ReopenSessionButton } from "./ReopenSessionButton";
+import { RemoveExerciseButton } from "./RemoveExerciseButton";
 import { SkipExerciseButton } from "./SkipExerciseButton";
 
 interface LastSet {
@@ -812,9 +814,20 @@ export function SessionLogger({ view }: { view: ClientView }) {
             {readOnly ? " · завершена" : ""}
           </p>
         </div>
-        <Link className="btn btn-ghost btn-sm" href="/today">
-          К сегодня
-        </Link>
+        <div className="row wrap" style={{ gap: 8 }}>
+          {!readOnly ? (
+            <AddExerciseButton
+              sessionId={view.session.id}
+              blocks={view.blocks.map((block) => ({
+                key: block.key,
+                name: block.name,
+              }))}
+            />
+          ) : null}
+          <Link className="btn btn-ghost btn-sm" href="/today">
+            К сегодня
+          </Link>
+        </div>
       </div>
 
       {view.session.isReturn ? (
@@ -1030,6 +1043,13 @@ export function SessionLogger({ view }: { view: ClientView }) {
                     ) : null}
                     {!readOnly && prescription.role !== "PRIMARY" ? (
                       <SkipExerciseButton
+                        sessionId={view.session.id}
+                        prescriptionId={prescription.id}
+                        exerciseName={prescription.exerciseName}
+                      />
+                    ) : null}
+                    {!readOnly && prescription.role !== "PRIMARY" ? (
+                      <RemoveExerciseButton
                         sessionId={view.session.id}
                         prescriptionId={prescription.id}
                         exerciseName={prescription.exerciseName}

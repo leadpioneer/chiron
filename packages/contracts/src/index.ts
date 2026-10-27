@@ -255,6 +255,14 @@ export const replaceExerciseSchema = z
   );
 export type ReplaceExerciseInput = z.infer<typeof replaceExerciseSchema>;
 
+export const addSessionExerciseSchema = z.object({
+  libraryId: z.string().min(1).max(120),
+  blockKey: z.string().min(1).max(80),
+});
+export type AddSessionExerciseInput = z.infer<
+  typeof addSessionExerciseSchema
+>;
+
 export const cycleReviewActionSchema = z.enum(["REBUILD", "STOP"]);
 export type CycleReviewAction = z.infer<typeof cycleReviewActionSchema>;
 
