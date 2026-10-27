@@ -535,7 +535,19 @@ export function SessionLogger({ view }: { view: ClientView }) {
     index: number,
   ) {
     const row = rows[prescription.id]?.[index];
-    if (!row || !row.saved) return;
+    if (!row) return;
+    const isExtra = index >= prescription.sets;
+    if (!row.saved) {
+      if (!isExtra) return;
+      if (!window.confirm("Убрать дополнительный подход?")) return;
+      setRows((current) => ({
+        ...current,
+        [prescription.id]: (current[prescription.id] ?? []).filter(
+          (_, rowIndex) => rowIndex !== index,
+        ),
+      }));
+      return;
+    }
     if (!window.confirm("Удалить сохранённый подход?")) return;
     patchRow(prescription.id, index, { saving: true, error: null });
     try {
@@ -549,6 +561,15 @@ export function SessionLogger({ view }: { view: ClientView }) {
           saving: false,
           error: payload.error ?? "Не удалось удалить подход.",
         });
+        return;
+      }
+      if (isExtra) {
+        setRows((current) => ({
+          ...current,
+          [prescription.id]: (current[prescription.id] ?? []).filter(
+            (_, rowIndex) => rowIndex !== index,
+          ),
+        }));
         return;
       }
       patchRow(prescription.id, index, {
@@ -1253,7 +1274,8 @@ export function SessionLogger({ view }: { view: ClientView }) {
                         >
                           боль
                         </button>
-                        {row.saved && !readOnly ? (
+                        {!readOnly &&
+                        (row.saved || index >= prescription.sets) ? (
                           <button
                             type="button"
                             className="mini-toggle"

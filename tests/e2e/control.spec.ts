@@ -321,6 +321,23 @@ test.describe("user control and corrections", () => {
           `[data-prescription-id="${external!.id}"] .set-row`,
         ),
       ).toHaveCount(external!.sets + 1);
+
+      page.on("dialog", (dialog) => dialog.accept());
+      const extraRow = page
+        .locator(`[data-prescription-id="${external!.id}"] .set-row`)
+        .last();
+      await extraRow.getByRole("button", { name: "удалить" }).click();
+      await expect(
+        page.locator(
+          `[data-prescription-id="${external!.id}"] .set-row`,
+        ),
+      ).toHaveCount(external!.sets);
+      const afterDelete = await sql`
+        select count(*)::int as n from set_performances
+        where session_id = ${first!.id}
+          and prescription_id = ${external!.id}
+      `;
+      expect(afterDelete[0]?.n).toBe(0);
     } finally {
       await sql.end();
     }
