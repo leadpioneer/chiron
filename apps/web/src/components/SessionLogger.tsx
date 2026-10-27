@@ -442,6 +442,13 @@ export function SessionLogger({ view }: { view: ClientView }) {
     }));
   }
 
+  async function removeLastExtra(prescription: ClientPrescription) {
+    const list = rows[prescription.id] ?? [];
+    const index = list.length - 1;
+    if (index < prescription.sets) return;
+    await removeSet(prescription, index);
+  }
+
   async function saveSet(
     prescription: ClientPrescription,
     index: number,
@@ -1311,13 +1318,26 @@ export function SessionLogger({ view }: { view: ClientView }) {
                   ))}
                 </div>
                 {!readOnly ? (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    type="button"
-                    onClick={() => addSet(prescription)}
-                  >
-                    ＋ Добавить подход
-                  </button>
+                  <div className="row wrap" style={{ gap: 8 }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => addSet(prescription)}
+                    >
+                      ＋ Добавить подход
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => void removeLastExtra(prescription)}
+                      disabled={
+                        (rows[prescription.id]?.length ??
+                          prescription.sets) <= prescription.sets
+                      }
+                    >
+                      − Убрать подход
+                    </button>
+                  </div>
                 ) : null}
               </div>
             );

@@ -323,10 +323,7 @@ test.describe("user control and corrections", () => {
       ).toHaveCount(external!.sets + 1);
 
       page.on("dialog", (dialog) => dialog.accept());
-      const extraRow = page
-        .locator(`[data-prescription-id="${external!.id}"] .set-row`)
-        .last();
-      await extraRow.getByRole("button", { name: "удалить" }).click();
+      await card.getByRole("button", { name: "− Убрать подход" }).click();
       await expect(
         page.locator(
           `[data-prescription-id="${external!.id}"] .set-row`,
