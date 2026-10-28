@@ -38,9 +38,7 @@ test.describe("accessory calibration", () => {
       await setRow.getByLabel("Вес", { exact: true }).fill("40");
       await setRow.getByLabel("Повторы", { exact: true }).fill("12");
       await setRow.getByRole("button", { name: "Готово" }).click();
-      await expect(
-        setRow.getByRole("button", { name: "Обновить" }),
-      ).toBeVisible();
+      await expect(setRow.getByText("Сохранено")).toBeVisible();
 
       await page
         .locator(".card")

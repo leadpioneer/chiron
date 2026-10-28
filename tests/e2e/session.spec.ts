@@ -21,9 +21,7 @@ test.describe("session and recommendation", () => {
 
       const firstRow = page.locator(".set-row").first();
       await firstRow.getByRole("button", { name: "Готово" }).click();
-      await expect(
-        firstRow.getByRole("button", { name: "Обновить" }),
-      ).toBeVisible();
+      await expect(firstRow.getByText("Сохранено")).toBeVisible();
 
       await page
         .locator(".card")

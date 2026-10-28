@@ -248,12 +248,11 @@ test.describe("user control and corrections", () => {
       );
       await card.getByLabel("Вес", { exact: true }).first().fill("40");
       await card.getByLabel("Повторы", { exact: true }).first().fill("8");
-      await card
-        .getByRole("button", { name: "Готово", exact: true })
-        .first()
-        .click();
       const firstRow = card.locator(".set-row").first();
-      await expect(firstRow.getByText("Сохранено")).toBeVisible();
+      await expect(firstRow.getByText("Сохранено")).toBeVisible({
+        timeout: 5_000,
+      });
+      await expect(page.getByText("Отдых")).toBeVisible();
 
       await firstRow
         .locator(".rir-row")
@@ -263,6 +262,7 @@ test.describe("user control and corrections", () => {
       await expect(firstRow.getByText("Сохранено")).toBeVisible({
         timeout: 5_000,
       });
+      await expect(page.getByText("Отдых")).toBeVisible();
       await page.waitForTimeout(1_200);
 
       const saved = await sql`

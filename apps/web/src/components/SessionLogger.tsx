@@ -243,6 +243,14 @@ export function SessionLogger({ view }: { view: ClientView }) {
   const [rows, setRows] = useState<Record<string, Row[]>>(() =>
     buildInitialRows(view),
   );
+  const restStartedRef = useRef(
+    new Set(
+      Object.values(rows)
+        .flat()
+        .filter((row) => row.saved)
+        .map((row) => row.clientSetId),
+    ),
+  );
   const [sleep, setSleep] = useState("");
   const [fatigue, setFatigue] = useState<number | null>(null);
   const [pain, setPain] = useState(false);
@@ -306,7 +314,6 @@ export function SessionLogger({ view }: { view: ClientView }) {
       for (const item of pending) {
         void saveSet(item.prescription, item.index, {
           auto: true,
-          startRest: false,
         });
       }
     }, 800);
@@ -527,7 +534,11 @@ export function SessionLogger({ view }: { view: ClientView }) {
         saved: true,
         dirty: false,
       });
-      if (options.startRest !== false) {
+      if (
+        options.startRest !== false &&
+        !restStartedRef.current.has(row.clientSetId)
+      ) {
+        restStartedRef.current.add(row.clientSetId);
         startRest(prescription.role === "PRIMARY" ? 150 : 90);
       }
     } catch {
@@ -1230,18 +1241,16 @@ export function SessionLogger({ view }: { view: ClientView }) {
                           +
                         </button>
                       </div>
-                      <button
-                        className={`set-done${row.saved ? " saved" : ""}`}
-                        type="button"
-                        onClick={() => saveSet(prescription, index)}
-                        disabled={readOnly || row.saving}
-                      >
-                        {row.saving
-                          ? "…"
-                          : row.saved
-                            ? "Обновить"
-                            : "Готово"}
-                      </button>
+                      {!row.saved ? (
+                        <button
+                          className="set-done"
+                          type="button"
+                          onClick={() => saveSet(prescription, index)}
+                          disabled={readOnly || row.saving}
+                        >
+                          {row.saving ? "…" : "Готово"}
+                        </button>
+                      ) : null}
 
                       <div
                         className="rir-row"
